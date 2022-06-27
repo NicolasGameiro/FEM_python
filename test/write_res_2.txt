@@ -1,0 +1,12 @@
+d = ' UZ = '
+*GET, N_COUNT, NODE,,COUNT
+
+*CFOPEN,'file','txt','C:\Users\ngameiro\Documents\03_Projets\Ansys_APDL'
+
+*do,j,1,N_COUNT,1
+*get,displ,NODE,j,U,Z
+*VWRITE,j,d, displ
+(F,A6,F10.5)
+*enddo
+
+*CFCLOS

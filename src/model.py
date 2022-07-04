@@ -367,14 +367,18 @@ class FEM_Model():
         U_r = np.linalg.inv(K_glob_r) @ F_r
         self.U = self.bc @ U_r
         self.React = K_glob @ self.U - F
-        self.S = self.stress()
+        #self.S = self.stress()
 
     def get_local_U(self, element):
         """Retourne le vecteur deplacement dans le repère local à partir du vecteur dans le repère global"""
         i, j = element[0] - 1, element[1] - 1
-        c, s = self.get_angle(element)
-        rot = self.Rot(c, s)
-        global_X = np.concatenate((self.U[i * 3:i * 3 + 3], self.U[j * 3:j * 3 + 3]), axis=None)
+        if self.mesh.dim == 2 :
+            c, s = self.get_angle(element)
+            rot = self.Rot(c, s)
+            global_X = np.concatenate((self.U[i * 3:i * 3 + 3], self.U[j * 3:j * 3 + 3]), axis=None)
+        elif self.mesh.dim == 3 :
+            rot = self.Rot_3D(self.mesh.node_list[j])
+            global_X = np.concatenate((self.U[i * 6:i * 6 + 6], self.U[j * 6:j * 6 + 6]), axis=None)
         local_X = rot.T @ global_X
         return local_X
 
@@ -426,11 +430,11 @@ class FEM_Model():
         elif self.mesh.dim == 3:
             RR = self.Rot_3D(NL[elem[1] - 1])
             rot_max = RR[0:6, 0:6]
-            Ui = np.transpose(rot_max).dot(U[6 * node_j: 6 * node_j + 6])
-            Uj = np.transpose(rot_max).dot(U[6 * node_j: 6 * node_j + 6])
-            epsilon_x = (Uj[0] - Ui[0]) / L
+            Ui = np.transpose(rot_max).dot(np.array(U[6 * node_i: 6 * node_i + 6]))
+            Uj = np.transpose(rot_max).dot(np.array(U[6 * node_j: 6 * node_j + 6]))
+            epsilon_x = (Uj[6] - Ui[0]) / L
             sigma_x = self.E * epsilon_x
-            tau_x = G * (Uj[3] - Ui[3]) / L * max(h, b)
+            tau_x = G * (Uj[7] - Ui[1]) / L * max(h, b)
             sigma_fy = self.E * h * (U[6 * node_j + 5] - U[6 * node_i + 5]) / L
             sigma_fz = self.E * b * (U[6 * node_j + 4] - U[6 * node_i + 4]) / L
             Ay = 12 * self.E * Iy / (k * G * h * b * L ** 2 + 12 * self.E * Iy)
@@ -460,18 +464,20 @@ class FEM_Model():
         # local vector
         F_local = np.empty((0,len(self.mesh.node_list) * 3))
         U_local = np.empty((0,len(self.mesh.node_list) * 3))
+        '''
         for el in self.mesh.element_list:
             fl = self.get_local_F(el)
             ul = self.get_local_U(el)
             F_local = np.concatenate((F_local, [fl]), axis=None)
             U_local = np.concatenate((U_local, [ul]), axis=None)
+        '''
         self.res = {}
         self.res['U'] = self.U
-        self.res['u'] = U_local
+        #self.res['u'] = U_local
         self.res['React'] = self.React
         self.res['F'] = self.load
-        self.res['f'] = F_local
-        self.res['stress'] = self.S
+        #self.res['f'] = F_local
+        #self.res['stress'] = self.S
         self.res['node'] = self.mesh.node_list
         self.res['element'] = self.mesh.element_list
         return self.res

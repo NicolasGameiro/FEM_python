@@ -154,12 +154,13 @@ class Plot():
             plt.savefig(path + 'load.png', format='png', dpi=200)
         return
 
-    def plot_forces3D(self, type='dist', pic=False, path="./"):
+    def plot_forces3D(self, type='nodal', pic=False, path="./"):
         fig = plt.figure(figsize=(8, 6))
         ax = fig.add_subplot(111, projection='3d')
         # plt.gca(projection='3d')
-        F = self.load
-        NL = self.mesh.node_list
+        F = self.res['F']
+        NL = self.res['node']
+        EL = self.res['element']
         scale_force = np.max(np.abs(F))
 
         # Affichage du maillage

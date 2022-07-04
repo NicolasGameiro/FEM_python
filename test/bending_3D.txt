@@ -1,0 +1,64 @@
+finish
+/clear
+
+!=== parameters ===
+L = 1 ! Longueur (en m)
+E = 2.1E9 ! Module d'Young (en Pa)
+nu = 0.3 ! Module de Poisson
+nb_elem = 10 ! Nombre d'elements
+F = -1000 ! charge (en N)
+rho = 7850 ! Masse volumique (en kg/m3)
+
+!=== geometry ===
+/prep7
+K,,0,0,0
+K,,0,0,L
+K,,L,0,L
+K,,L,L,L
+lstr,1,2
+lstr,2,3
+lstr,3,4
+
+!=== material ===
+et,1,beam188 
+
+MPTEMP,,,,,,,,  
+MPTEMP,1,0  
+MPDATA,EX,1,,2.1E9  
+MPDATA,PRXY,1,,0.3
+mp,dens,1,rho
+
+SECTYPE, 1, BEAM, RECT, , 0   
+SECOFFSET, CENT 
+SECDATA,0.22,0.1,1,1
+
+LESIZE,ALL, , ,nb_elem, ,1, , ,1,
+LMESH,       ALL
+eplot ! Produces an element display
+
+!=== Conditions limites ===
+/sol
+antype,0
+d,1,all
+f,22,fz,F
+
+/SOLU
+/status,solu
+solve
+
+Dx = ' UX = '
+Dy = ' UY = '
+Dz = ' UZ = '
+*GET, N_COUNT, NODE,,COUNT
+
+*CFOPEN,'file','txt','C:\Users\ngameiro\Documents\03_Projets\Ansys_APDL'
+
+*do,j,1,N_COUNT,1
+*get,dx,NODE,j,U,X
+*get,dy,NODE,j,U,Y
+*get,dz,NODE,j,U,Z
+*VWRITE,j,Dx, dx, Dy, dy, Dz, dz
+(F,A6,F10.5,A6,F10.5,A6,F10.5)
+*enddo
+
+*CFCLOS

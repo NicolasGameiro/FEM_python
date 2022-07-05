@@ -18,6 +18,7 @@ Created on Sun May  1 12:41:46 2022
 
 # Model
 import numpy as np
+import math
 from prettytable import PrettyTable as pt
 
 
@@ -31,13 +32,13 @@ class FEM_Model():
             self.bc = np.eye(len(self.mesh.node_list) * 3)
             self.U = np.zeros(len(self.mesh.node_list) * 3)
             self.React = np.zeros(len(self.mesh.node_list) * 3)
-            self.S = np.empty((0, 4))
+            self.S = np.empty((0, 5))
         elif self.mesh.dim == 3:
             self.load = np.zeros([len(self.mesh.node_list), 6])
             self.bc = np.eye(len(self.mesh.node_list) * 6)
             self.U = np.zeros(len(self.mesh.node_list) * 6)
             self.React = np.zeros(len(self.mesh.node_list) * 6)
-            self.S = np.empty((0, 7))
+            self.S = np.empty((0 , 7))
         self.dist_load = np.array([[1, 2, 0]])
         self.lbc = []
 
@@ -367,16 +368,17 @@ class FEM_Model():
         U_r = np.linalg.inv(K_glob_r) @ F_r
         self.U = self.bc @ U_r
         self.React = K_glob @ self.U - F
-        #self.S = self.stress()
+        self.S = self.stress()
 
     def get_local_U(self, element):
         """Retourne le vecteur deplacement dans le repère local à partir du vecteur dans le repère global"""
+
         i, j = element[0] - 1, element[1] - 1
-        if self.mesh.dim == 2 :
+        if self.mesh.dim == 2:
             c, s = self.get_angle(element)
             rot = self.Rot(c, s)
             global_X = np.concatenate((self.U[i * 3:i * 3 + 3], self.U[j * 3:j * 3 + 3]), axis=None)
-        elif self.mesh.dim == 3 :
+        elif self.mesh.dim == 3:
             rot = self.Rot_3D(self.mesh.node_list[j])
             global_X = np.concatenate((self.U[i * 6:i * 6 + 6], self.U[j * 6:j * 6 + 6]), axis=None)
         local_X = rot.T @ global_X
@@ -384,18 +386,19 @@ class FEM_Model():
 
     def get_local_F(self, element):
         """Retourne le vecteur force dans le repère local à partir du vecteur dans le repère global"""
+
         i, j = element[0] - 1, element[1] - 1
-        c, s = self.get_angle(element)
-        rot = self.Rot(c, s)
-        global_X = np.concatenate((self.U[i * 3:i * 3 + 3], self.U[j * 3:j * 3 + 3]), axis=None)
-        local_X = np.transpose(rot).dot(global_X)
-        local_U = self.get_local_U(element)
-        L_e = self.get_length(element)
-        rot = self.Rot(c, s)
-        h, b = 1, 1 # self.mesh.Section[i, 0], self.mesh.Section[i, 1]
-        # rotation matrice elem
-        k = self.K_elem(L_e, h, b)
-        local_f = k @ local_U
+        if self.mesh.dim == 2:
+            c, s = self.get_angle(element)
+            rot = self.Rot(c, s)
+            global_X = np.concatenate((self.U[i * 3:i * 3 + 3], self.U[j * 3:j * 3 + 3]), axis=None)
+            local_X = np.transpose(rot).dot(global_X)
+            local_U = self.get_local_U(element)
+            L_e = self.get_length(element)
+            h, b = 1, 1  # self.mesh.Section[i, 0], self.mesh.Section[i, 1]
+            # rotation matrice elem
+            k = self.K_elem(L_e, h, b)
+            local_f = k @ local_U
         return local_f
 
     def calcul_stresses(self, elem):
@@ -416,9 +419,9 @@ class FEM_Model():
             epsilon_x = (U[3] - U[0]) / L
             sigma_x = self.E * epsilon_x  # / 1E6
             sigma_fy = self.E * h * (U[5] - U[2]) / L  # / 1E6
-            tau_y = np.array([0]) / 1E6
-            sigma_VM = np.sqrt((sigma_x + sigma_fy) ** 2 + 3 * (tau_y) ** 2)
-            sigma_T = np.sqrt((sigma_x + sigma_fy) ** 2 + 4 * (tau_y) ** 2) / 1E6
+            tau_y = 0 / 1E6
+            sigma_VM = math.sqrt((sigma_x + sigma_fy) ** 2 + 3 * (tau_y) ** 2)
+            sigma_T = math.sqrt((sigma_x + sigma_fy) ** 2 + 4 * (tau_y) ** 2) / 1E6
             if self.mesh.debug == True:
                 print("déformation (en mm) =", epsilon_x * 1E3)
                 print("contrainte normale (en MPa) =", sigma_x)
@@ -426,7 +429,7 @@ class FEM_Model():
                 print("contrainte cisaillement de flexion (en MPa) =", tau_y)
                 print("contrainte Von Mises (en MPa) =", sigma_VM)
                 print("contrainte Tresca (en MPa) =", sigma_T)
-            return np.array([sigma_x, sigma_fy, tau_y, sigma_VM, sigma_T])
+            return np.array([[sigma_x, sigma_fy, tau_y, sigma_VM, sigma_T]])
         elif self.mesh.dim == 3:
             RR = self.Rot_3D(NL[elem[1] - 1])
             rot_max = RR[0:6, 0:6]
@@ -452,32 +455,32 @@ class FEM_Model():
                 print("contrainte cisaillement de flexion (en MPa) =", tau_y[0] / 1E6)
                 print("contrainte cisaillement de flexion (en MPa) =", tau_z[0] / 1E6)
                 print("contrainte Von Mises (en MPa) =", sigma_VM[0] / 1E6)
-            return np.array([sigma_x, sigma_fy, sigma_fz, tau_x, tau_y, tau_z, sigma_VM])
+            return np.array([[sigma_x, sigma_fy, sigma_fz, tau_x, tau_y, tau_z, sigma_VM]])
 
     def stress(self):
         EL = self.mesh.element_list
         for elem in EL:
-            self.S = np.append(self.S, self.calcul_stresses(elem))
+            self.S = np.append(self.S, self.calcul_stresses(elem), axis=0)
         return self.S
 
     def get_res(self):
         # local vector
-        F_local = np.empty((0,len(self.mesh.node_list) * 3))
-        U_local = np.empty((0,len(self.mesh.node_list) * 3))
-        '''
+        F_local = np.empty((0, len(self.mesh.node_list) * 3))
+        U_local = np.empty((0, len(self.mesh.node_list) * 3))
+
         for el in self.mesh.element_list:
             fl = self.get_local_F(el)
             ul = self.get_local_U(el)
             F_local = np.concatenate((F_local, [fl]), axis=None)
             U_local = np.concatenate((U_local, [ul]), axis=None)
-        '''
+
         self.res = {}
         self.res['U'] = self.U
-        #self.res['u'] = U_local
+        self.res['u'] = U_local
         self.res['React'] = self.React
         self.res['F'] = self.load
-        #self.res['f'] = F_local
-        #self.res['stress'] = self.S
+        self.res['f'] = F_local
+        self.res['stress'] = self.S
         self.res['node'] = self.mesh.node_list
         self.res['element'] = self.mesh.element_list
         return self.res
@@ -533,11 +536,11 @@ class FEM_Model():
             tab.field_names = ["Elem", "Sx (MPa)", "Sf (MPa)", "Ty (MPa)", "SVM (MPa)", "Tresca (MPa)"]
             for i in range(len(self.mesh.element_list)):
                 tab.add_row([int(i + 1),
-                             np.format_float_scientific(self.S[i * 5], precision=2, exp_digits=2),
-                             np.format_float_scientific(self.S[i * 5 + 1], precision=2, exp_digits=2),
-                             np.format_float_scientific(self.S[i * 5 + 2], precision=2, exp_digits=2),
-                             np.format_float_scientific(self.S[i * 5 + 3], precision=2, exp_digits=2),
-                             np.format_float_scientific(self.S[i * 5 + 4], precision=2, exp_digits=2)])
+                             np.format_float_scientific(self.S[i, 0], precision=2, exp_digits=2),
+                             np.format_float_scientific(self.S[i, 1], precision=2, exp_digits=2),
+                             np.format_float_scientific(self.S[i, 2], precision=2, exp_digits=2),
+                             np.format_float_scientific(self.S[i, 3], precision=2, exp_digits=2),
+                             np.format_float_scientific(self.S[i, 4], precision=2, exp_digits=2)])
         else:
             tab.field_names = ["Node", "Ux (m)", "Uy (m)", "Uz (m)", "Phix (rad)", "Phiy (rad)", "Phiz (rad)"]
             for i in range(len(self.mesh.node_list)):

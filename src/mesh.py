@@ -11,25 +11,32 @@ from log import logger
 
 
 class Mesh:
-    def __init__(self, dim: int, node_list=[], element_list=[], ax = None, debug=False):
+    def __init__(self, dim: int, ax = None, debug=False):
         """ Initiatiolisation d'un maillage à partir de sa dimension"""
         logger.info("Meshing...")
         logger.info(f"Mesh dimension : {dim}D")
+        ### Variables
         self.dim = dim
         self.node_list = np.empty((0, dim))
-        self.node_list_ex = np.empty((0, dim))
         self.element_list = np.empty((0, 2), dtype=int)
-        self.element_list_ex = np.empty((0, 2), dtype=int)
         self.name = np.empty((0, 1))
         self.color = np.empty((0, 1))
         self.Section = np.empty((0, 2))
+        self.div = np.empty((0, 1), dtype=int)
+        self.debug = debug
+
+        ### Extended variables
+        self.node_list_ex = np.empty((0, dim))
+        self.element_list_ex = np.empty((0, 2), dtype=int)
         self.name_ex = np.empty((0, 1))
         self.color_ex = np.empty((0, 1))
         self.Section_ex = np.empty((0, 2))
-        self.div = np.empty((0, 1), dtype=int)
-        self.debug = debug
+
         if ax == None :
-            self.figure_axis = plt.figure(figsize=(8, 6)).add_subplot(111)
+            if self.dim == 2 :
+                self.figure_axis = plt.figure(figsize=(8, 6)).add_subplot(111)
+            else :
+                self.figure_axis = plt.figure(figsize=(8, 6)).add_subplot(111, projection='3d')
         else :
             self.figure_axis = ax
 
@@ -37,22 +44,22 @@ class Mesh:
         """ Ajout un noeud au maillage """
 
         if len(node) != self.dim:
-            print("Erreur : format du noeud incorrect")
             logger.info("Erreur : format du noeud incorrect")
         else:
             found, index = self.check_node(node)
             if found == False:
                 self.node_list = np.append(self.node_list, np.array([node]), axis=0)
-                # print("noeud ajouté")
                 logger.info(f"noeud {node} ajouté")
             else:
-                print("noeud deja dans le maillage")
                 logger.info("noeud deja dans le maillage")
         if self.debug == True:
-            print(self.node_list)
+            logger.info("Liste des noeuds :")
+            logger.info(self.node_list)
 
+    #TODO : creer une fonction avec comme argument une liste
     def check_node(self, node):
         """Verification qu'un noeud n'est pas déjà dans le maillage"""
+
         index = -1
         found = False
         while (found is not True) and (index + 1 < len(self.node_list)) and (self.node_list.size != 0):
@@ -82,25 +89,24 @@ class Mesh:
 
     def del_node(self, node):
         if len(node) != self.dim:
-            print("Erreur : format du noeud incorrect")
             logger.info("Erreur : format du noeud incorrect")
         else:
             found, index = self.check_node(node)
             if found == True:
                 self.node_list = np.delete(self.node_list, index, 0)
-                print("noeud supprimé")
                 logger.info(f"noeud {node} supprimé")
             else:
                 print("noeud non trouvé")
             if self.debug == True:
-                print(self.node_list)
+                logger.info("Liste des noeuds :")
+                logger.info(self.node_list)
 
     def reset_node(self):
         self.node_list = np.array([])
-        print("liste des noeuds vidée")
         logger.info("suppression de la liste des noeuds")
         if self.debug == True:
-            print(self.node_list)
+            logger.info("Liste des noeuds :")
+            logger.info(self.node_list)
         return
 
     ### GESTION DES ELEMENTS
@@ -133,19 +139,16 @@ class Mesh:
 
     def del_element(self, element):
         if len(element) != self.dim:
-            print("Erreur : format de l'element incorrect")
+            logger.info("Erreur : format de l'element incorrect")
         else:
             found, index = self.check_elem(element)
             if found == True:
                 self.element_list = np.delete(self.element_list, index, 0)
-                print("element supprimé")
+                logger.info("element supprimé")
             else:
-                print("element non trouvé")
+                logger.info("element non trouvé")
             if self.debug == True:
                 print(self.element_list)
-
-    def add_section(self, S):
-        self.S_list = np.append(self.S_list, [S], axis=0)
 
     def node_table(self):
         tab = pt()
@@ -162,6 +165,7 @@ class Mesh:
     def maillage(self):
         #TODO : créer une table de correspondance entre le maillage maitre et eleve
         """Fonction permettant de remailler le maillage initial"""
+
         last_node = 1
         for i in range(len(self.element_list)):
             el = self.element_list[i]
@@ -227,7 +231,6 @@ class Mesh:
     """
 
     def plot_mesh(self, ex=False, pic=False, path="./"):
-        self.figure_axis = plt.figure(figsize=(8, 6)).add_subplot(111)
         if ex == True:
             NL = self.node_list_ex
             EL = self.element_list_ex
@@ -243,7 +246,7 @@ class Mesh:
         if self.dim == 2:
             self.figure_axis, pts = self.geom2D(NL, EL, name, color, section, pic)
         else:
-            self.figure_axis = self.geom3D(NL, EL, name, color, section, pic)
+            self.figure_axis, pts = self.geom3D(NL, EL, name, color, section, pic)
         return self.figure_axis, pts
 
     def geom2D(self, NL, EL, name, color, section, pic=False, path="./"):
@@ -289,13 +292,11 @@ class Mesh:
         return ax, pts
 
     def geom3D(self, NL, EL, name, color, section, pic=False, path="./"):
-        fig = plt.figure(figsize=(8, 6))
-        # plt.gca(projection='3d')
-        ax = fig.add_subplot(111, projection='3d')
+        ax = self.figure_axis
         x = [x for x in NL[:, 0]]
         y = [y for y in NL[:, 1]]
         z = [z for z in NL[:, 2]]
-        ax.scatter(x, y, z, c='y', s=100, zorder=1)
+        pts = ax.scatter(x, y, z, c='y', s=100, zorder=1)
         for i, location in enumerate(zip(x, y)):
             ax.text(x[i], y[i], z[i], str(i + 1), size=20, zorder=2, color="k")
         for i in range(len(EL)):
@@ -313,20 +314,16 @@ class Mesh:
         ax.set_box_aspect([1, 1, 1])
         if pic:
             plt.savefig(path + 'geom.png', format='png', dpi=200)
-        return fig
+        return ax, pts
 
 
 if __name__ == "__main__":
     mesh = Mesh(2, debug=False)
     mesh.add_node([0, 0])
-    mesh.add_node([0, 10])  # inches
-    mesh.add_node([10, 10])  # inches
-    mesh.add_node([20, 10])
+    mesh.add_node([0, 1])  # inches
+    mesh.add_node([1, 1])  # inches
     mesh.add_element([1, 2], "barre", "b", 15, 15, 5)
     mesh.add_element([2, 3], "barre", "b", 15, 15, 5)
     mesh.add_element([3, 1], "bracon", "r", 10, 10, 4)
-    mesh.add_element([1, 4], "semelle", "g", 10, 10, 3)
     mesh.plot_mesh()
-    mesh.maillage()
-    mesh.plot_mesh(ex=True)
     plt.show()

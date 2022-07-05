@@ -151,7 +151,7 @@ def test_2d():
 
 
 def test_cantilever():
-    mesh = Mesh(2, [], [], debug=False)
+    mesh = Mesh(2, debug=False)
     mesh.add_node([0, 0])
     mesh.add_node([1, 0])
     mesh.add_element([1, 2], "entrait", "r", 0.22, 0.1, 10)
@@ -162,6 +162,7 @@ def test_cantilever():
     f.solver_frame()
     f.U_table()
     f.R_table()
+    print("stress :", f.S)
     f.S_table()
     res = f.get_res()
     # ----- POST-PROCESSING -----

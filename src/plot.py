@@ -28,10 +28,11 @@ class Arrow3D(FancyArrowPatch):
 
 
 class Plot():
-    def __init__(self, res, mesh, show=False):
+    def __init__(self, res, mesh, model, show=False):
         self.show = show
         self.res = res
         self.mesh = mesh
+        self.model = model
 
     def charge_2D(self, pt1, pt2, q):
         x1, x2 = pt1[0], pt2[0]
@@ -67,32 +68,6 @@ class Plot():
         ax.add_patch(Polygon(xy=list(zip(x, y)), fill=True, color='red', alpha=0.1, lw=0))
         return
 
-    def charge_3D(self, ax, pt1, pt2, q):
-        x1, x2 = pt1[0], pt2[0]
-        y1, y2 = pt1[1], pt2[1]
-        z1, z2 = pt1[2], pt2[2]
-        dx, dy, dz = x2 - x1, y2 - y1, z2 - z1
-        L = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
-        # a = np.arctan(dy / dx)
-        nb_pt = 10
-        amplitude = 1
-        x = np.linspace(x1, x2, nb_pt)
-        y = np.linspace(y1, y2, nb_pt)
-        z = np.linspace(z1, z2, nb_pt)
-
-        for i in range(0, nb_pt):
-            a = Arrow3D([x[i], x[i]],
-                        [y[i], y[i]],
-                        [z[i] + amplitude, z[i]],
-                        mutation_scale=10,
-                        lw=2, arrowstyle="-|>", color="r")
-            ax.add_artist(a)
-        line, = ax.plot([x1, x2], [y1, y2], [z1 + amplitude, z2 + amplitude], color='r', lw=1)
-        ax.text(x1 + dx / 2, y1 + dy / 2, z1 + dz / 2,
-                "q = " + str(q) + " kN/m",
-                size=20, zorder=2, color="k")
-        return
-
     def plot_mesh_2D(self, size=50, node=False):
         NL = self.res['node']
         EL = self.res['element']
@@ -107,22 +82,6 @@ class Plot():
             xi, xj = NL[EL[i, 0] - 1, 0], NL[EL[i, 1] - 1, 0]
             yi, yj = NL[EL[i, 0] - 1, 1], NL[EL[i, 1] - 1, 1]
             plt.plot([xi, xj], [yi, yj], color='k', lw=1, linestyle='--', label="undeformed")
-
-    def plot_mesh_3D(self, ax, size=50):
-        NL = self.res['node']
-        EL = self.res['element']
-        x = [x for x in NL[:, 0]]
-        y = [y for y in NL[:, 1]]
-        z = [z for z in NL[:, 2]]
-        ax.scatter(x, y, z, c='y', s=size, zorder=1)
-        for i, location in enumerate(zip(x, y)):
-            ax.text(x[i], y[i], z[i], str(i + 1), size=20, zorder=2, color="k")
-        for i in range(len(EL)):
-            xi, xj = NL[EL[i, 0] - 1, 0], NL[EL[i, 1] - 1, 0]
-            yi, yj = NL[EL[i, 0] - 1, 1], NL[EL[i, 1] - 1, 1]
-            zi, zj = NL[EL[i, 0] - 1, 2], NL[EL[i, 1] - 1, 2]
-            line, = ax.plot([xi, xj], [yi, yj], [zi, zj], color=self.mesh.color[i], lw=1, linestyle='--')
-            line.set_label(self.mesh.name[i])
 
     def plot_forces(self, type='nodal', pic=False, path="./"):
         plt.figure()
@@ -153,53 +112,6 @@ class Plot():
         if pic:
             plt.savefig(path + 'load.png', format='png', dpi=200)
         return
-
-    def plot_forces3D(self, type='nodal', pic=False, path="./"):
-        fig = plt.figure(figsize=(8, 6))
-        ax = fig.add_subplot(111, projection='3d')
-        # plt.gca(projection='3d')
-        F = self.res['F']
-        NL = self.res['node']
-        EL = self.res['element']
-        scale_force = np.max(np.abs(F))
-
-        # Affichage du maillage
-
-        self.plot_mesh_3D(ax=ax)
-
-        ### Trace les efforts
-        if type == 'nodal':
-            f_length = np.sqrt(F[:, 0] ** 2 + F[:, 1] ** 2 + F[:, 2] ** 2) / scale_force
-            plt.quiver(NL[:, 0] - F[:, 0] / scale_force, NL[:, 1] - F[:, 1] / scale_force,
-                       NL[:, 2] - F[:, 2] / scale_force,
-                       F[:, 0] / scale_force, F[:, 1] / scale_force, F[:, 2] / scale_force, color='r', pivot="tail",
-                       length=max(f_length), normalize=True)
-        elif type == 'dist':
-            for elem in self.dist_load[1:]:
-                pt1 = NL[elem[0] - 1]
-                pt2 = NL[elem[1] - 1]
-                self.charge_3D(ax, pt1, pt2, elem[2])
-        # self.charge_3D(ax, [0, 0, 2.5], [0, 6 / 2, 5], 1)
-        ax.set_title("Structure")
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.set_box_aspect([1, 1, 1])
-        ax.legend()
-        ax.view_init(elev=20., azim=-20.)
-        """
-        x, y , z = 0, 0, 2.5+1
-        u, v, w = 0, 0, -1
-        ax.quiver(x, y, z, u, v, w, length=1, normalize=True)
-        """
-        ax.set_xlim(-1, max(NL[:, 0]) + 1)
-        ax.set_ylim(-1, max(NL[:, 1]) + 1)
-        ax.set_zlim(0, max(NL[:, 2]) + 1)
-        plt.tight_layout()
-        plt.grid()
-        if pic:
-            plt.savefig(path + 'load.png', format='png', dpi=200)
-        return ax
 
     def interpol(self, x1, x2, y1, y2, y3, y4, r):
         x3 = x1
@@ -258,36 +170,45 @@ class Plot():
         return
 
     def plot_diagram(self, type="M"):
-        Reactions = self.res["f"].flatten()
+        Reactions = self.res["f"]
         NL, EL = self.mesh.node_list, self.mesh.element_list
-        print(Reactions.reshape(2*len(self.mesh.element_list), 3))
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(3)
         self.plot_mesh_2D()
         for elem in EL:
             ni, nj = elem
             xi, xj = NL[ni - 1][0], NL[nj - 1][0]
             yi, yj = NL[ni - 1][1], NL[nj - 1][1]
-            if type == "N":
-                ri, rj = Reactions[(ni - 1) * 3 + 1], Reactions[(nj - 1) * 3 + 1]
-            elif type == "M":
-                ri, rj = Reactions[(ni - 1) * 3 + 2], Reactions[(nj - 1) * 3 + 2]
-            x = [xi, xi, xj, xj, xi]
-            y = [yi, yi + ri, yj + rj, yj, yi]
-            ax.add_patch(Polygon(xy=list(zip(x, y)), fill=True, color="r", alpha=0.5, lw=0))
+            ### T/C
+            ri, rj = Reactions[(ni - 1),0], Reactions[(nj - 1),0]
+            ax[0].plot([xi, xi, xj, xj], [0, ri, rj, 0], 'r', linewidth = 2)
+            ax[0].fill([xi, xi, xj, xj], [0, ri, rj, 0], 'c', alpha=0.3)
+            ### Shear
+            ri, rj = -Reactions[(ni - 1),1], Reactions[(nj - 1), 1]
+            ax[1].plot([xi, xi, xj, xj], [0, ri, rj, 0], 'r', linewidth = 2)
+            ax[1].fill([xi, xi, xj, xj], [0, ri, rj, 0], 'c', alpha=0.3)
+            ### Bending moment
+            ri, rj = -Reactions[(ni - 1), 2], Reactions[(nj - 1), 2]
+            ax[2].plot([xi, xi, xj, xj], [0, ri, rj, 0], 'r', linewidth = 2)
+            ax[2].fill([xi, xi, xj, xj], [0, ri, rj, 0], 'c', alpha=0.3)
+        '''
+        x = [xi, xi, xj, xj, xi]
+        y = [yi, yi + ri, yj - rj, yj, yi]
+        ax.add_patch(Polygon(xy=list(zip(x, y)), fill=True, color="r", alpha=0.5, lw=0))
+        '''
+
         return
 
-    def plot_disp_f(self, scale=1e2, r=150, dir='x', pic=False, path="./"):
+    def plot_disp(self, scale=1e2, r=150, dir='x', pic=False, path="./"):
         NL = self.mesh.node_list
         EL = self.mesh.element_list
-        U = self.U
+        U = self.res['U']
         x_scatter = []
         y_scatter = []
         color = []
         plt.figure()
-        for i in range(len(EL)):
-            xi, xj = NL[EL[i, 0] - 1, 0], NL[EL[i, 1] - 1, 0]
-            yi, yj = NL[EL[i, 0] - 1, 1], NL[EL[i, 1] - 1, 1]
-            plt.plot([xi, xj], [yi, yj], color='k', lw=1, linestyle='--')
+        # maillage non deforme
+        self.plot_mesh_2D()
+
         for i in range(len(EL)):
             if dir == 'y':
                 plt.title("y")
@@ -310,6 +231,7 @@ class Plot():
                 color.append(np.linspace(U[(EL[i, 0] - 1) * 3] + U[(EL[i, 0] - 1) * 3 + 1],
                                          U[(EL[i, 1] - 1) * 3] + U[(EL[i, 1] - 1) * 3 + 1], r))
         # Permet de reverse la barre de couleur si max negatif
+        # TODO : a corriger
         if min(U) > 0:
             cmap = plt.get_cmap('jet')
         elif min(U) <= 0:
@@ -388,6 +310,99 @@ class Plot():
         plt.quiver(node_i[0], node_i[1], node_i[2], vx[0], vx[1], vx[2], color='r', length=0.1, normalize=True)
         plt.quiver(node_i[0], node_i[1], node_i[2], vy[0], vy[1], vy[2], color='g', length=0.1, normalize=True)
         plt.quiver(node_i[0], node_i[1], node_i[2], vz[0], vz[1], vz[2], color='b', length=0.1, normalize=True)
+
+    ##########
+    ### 3D ###
+    ##########
+
+    def plot_mesh_3D(self, ax, size=50):
+        NL = self.res['node']
+        EL = self.res['element']
+        x = [x for x in NL[:, 0]]
+        y = [y for y in NL[:, 1]]
+        z = [z for z in NL[:, 2]]
+        ax.scatter(x, y, z, c='y', s=size, zorder=1)
+        for i, location in enumerate(zip(x, y)):
+            ax.text(x[i], y[i], z[i], str(i + 1), size=20, zorder=2, color="k")
+        for i in range(len(EL)):
+            xi, xj = NL[EL[i, 0] - 1, 0], NL[EL[i, 1] - 1, 0]
+            yi, yj = NL[EL[i, 0] - 1, 1], NL[EL[i, 1] - 1, 1]
+            zi, zj = NL[EL[i, 0] - 1, 2], NL[EL[i, 1] - 1, 2]
+            line, = ax.plot([xi, xj], [yi, yj], [zi, zj], color=self.mesh.color[i], lw=1, linestyle='--')
+            line.set_label(self.mesh.name[i])
+
+    def charge_3D(self, ax, pt1, pt2, q):
+        x1, x2 = pt1[0], pt2[0]
+        y1, y2 = pt1[1], pt2[1]
+        z1, z2 = pt1[2], pt2[2]
+        dx, dy, dz = x2 - x1, y2 - y1, z2 - z1
+        L = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
+        # a = np.arctan(dy / dx)
+        nb_pt = 10
+        amplitude = 1
+        x = np.linspace(x1, x2, nb_pt)
+        y = np.linspace(y1, y2, nb_pt)
+        z = np.linspace(z1, z2, nb_pt)
+
+        for i in range(0, nb_pt):
+            a = Arrow3D([x[i], x[i]],
+                        [y[i], y[i]],
+                        [z[i] + amplitude, z[i]],
+                        mutation_scale=10,
+                        lw=2, arrowstyle="-|>", color="r")
+            ax.add_artist(a)
+        line, = ax.plot([x1, x2], [y1, y2], [z1 + amplitude, z2 + amplitude], color='r', lw=1)
+        ax.text(x1 + dx / 2, y1 + dy / 2, z1 + dz / 2,
+                "q = " + str(q) + " kN/m",
+                size=20, zorder=2, color="k")
+        return
+
+    def plot_forces3D(self, type='nodal', pic=False, path="./"):
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot(111, projection='3d')
+        # plt.gca(projection='3d')
+        F = self.res['F']
+        NL = self.res['node']
+        EL = self.res['element']
+        scale_force = np.max(np.abs(F))
+
+        # Affichage du maillage
+
+        self.plot_mesh_3D(ax=ax)
+
+        ### Trace les efforts
+        if type == 'nodal':
+            f_length = np.sqrt(F[:, 0] ** 2 + F[:, 1] ** 2 + F[:, 2] ** 2) / scale_force
+            plt.quiver(NL[:, 0] - F[:, 0] / scale_force, NL[:, 1] - F[:, 1] / scale_force,
+                       NL[:, 2] - F[:, 2] / scale_force,
+                       F[:, 0] / scale_force, F[:, 1] / scale_force, F[:, 2] / scale_force, color='r', pivot="tail",
+                       length=max(f_length), normalize=True)
+        elif type == 'dist':
+            for elem in self.model.dist_load[1:]:
+                pt1 = NL[elem[0] - 1]
+                pt2 = NL[elem[1] - 1]
+                self.charge_3D(ax, pt1, pt2, elem[2])
+        # self.charge_3D(ax, [0, 0, 2.5], [0, 6 / 2, 5], 1)
+        ax.set_title("Structure")
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_box_aspect([1, 1, 1])
+        ax.legend()
+        ax.view_init(elev=20., azim=-20.)
+        """
+        x, y , z = 0, 0, 2.5+1
+        u, v, w = 0, 0, -1
+        ax.quiver(x, y, z, u, v, w, length=1, normalize=True)
+        """
+        ax.set_xlim(-1, max(NL[:, 0]) + 1)
+        ax.set_ylim(-1, max(NL[:, 1]) + 1)
+        ax.set_zlim(0, max(NL[:, 2]) + 1)
+        plt.tight_layout()
+        plt.grid()
+        if pic:
+            plt.savefig(path + 'load.png', format='png', dpi=200)
+        return ax
 
     def plot_disp_f_3D(self, scale=1e0, r=80, dir='x', pic=False, path="./"):
         fig = plt.figure(figsize=(8, 6))

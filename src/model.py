@@ -368,7 +368,7 @@ class FEM_Model():
         U_r = np.linalg.inv(K_glob_r) @ F_r
         self.U = self.bc @ U_r
         self.React = K_glob @ self.U - F
-        self.S = self.stress()
+        #self.S = self.stress()
 
     def get_local_U(self, element):
         """Retourne le vecteur deplacement dans le repère local à partir du vecteur dans le repère global"""
@@ -392,13 +392,15 @@ class FEM_Model():
             c, s = self.get_angle(element)
             rot = self.Rot(c, s)
             global_X = np.concatenate((self.U[i * 3:i * 3 + 3], self.U[j * 3:j * 3 + 3]), axis=None)
-            local_X = np.transpose(rot).dot(global_X)
+            local_X = rot.T @ global_X
             local_U = self.get_local_U(element)
             L_e = self.get_length(element)
             h, b = 1, 1  # self.mesh.Section[i, 0], self.mesh.Section[i, 1]
             # rotation matrice elem
             k = self.K_elem(L_e, h, b)
+            load_element = np.concatenate((self.load[i], self.load[j]), axis=None)
             local_f = k @ local_U
+            print(local_f)
         return local_f
 
     def calcul_stresses(self, elem):
@@ -435,9 +437,9 @@ class FEM_Model():
             rot_max = RR[0:6, 0:6]
             Ui = np.transpose(rot_max).dot(np.array(U[6 * node_i: 6 * node_i + 6]))
             Uj = np.transpose(rot_max).dot(np.array(U[6 * node_j: 6 * node_j + 6]))
-            epsilon_x = (Uj[6] - Ui[0]) / L
+            epsilon_x = (Uj[0] - Ui[0]) / L
             sigma_x = self.E * epsilon_x
-            tau_x = G * (Uj[7] - Ui[1]) / L * max(h, b)
+            tau_x = G * (Uj[1] - Ui[1]) / L * max(h, b)
             sigma_fy = self.E * h * (U[6 * node_j + 5] - U[6 * node_i + 5]) / L
             sigma_fz = self.E * b * (U[6 * node_j + 4] - U[6 * node_i + 4]) / L
             Ay = 12 * self.E * Iy / (k * G * h * b * L ** 2 + 12 * self.E * Iy)
@@ -468,19 +470,21 @@ class FEM_Model():
         F_local = np.empty((0, len(self.mesh.node_list) * 3))
         U_local = np.empty((0, len(self.mesh.node_list) * 3))
 
+
         for el in self.mesh.element_list:
             fl = self.get_local_F(el)
             ul = self.get_local_U(el)
             F_local = np.concatenate((F_local, [fl]), axis=None)
             U_local = np.concatenate((U_local, [ul]), axis=None)
 
+
         self.res = {}
         self.res['U'] = self.U
         self.res['u'] = U_local
         self.res['React'] = self.React
         self.res['F'] = self.load
-        self.res['f'] = F_local
-        self.res['stress'] = self.S
+        self.res['f'] = F_local.reshape((len(self.mesh.element_list)*2,3))
+        #self.res['stress'] = self.S
         self.res['node'] = self.mesh.node_list
         self.res['element'] = self.mesh.element_list
         return self.res

@@ -259,6 +259,7 @@ class Mesh:
         color_list = []
         for i, location in enumerate(zip(x, y)):
             ax.annotate(i + 1, (location[0] - offset, location[1] - offset), zorder=10)
+            #ax.text(location[0], location[1], str(i + 1), rotation = 45)
         for i in range(len(EL)):
             xi, xj = NL[EL[i, 0] - 1, 0], NL[EL[i, 1] - 1, 0]
             yi, yj = NL[EL[i, 0] - 1, 1], NL[EL[i, 1] - 1, 1]

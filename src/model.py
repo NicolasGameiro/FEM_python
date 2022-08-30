@@ -128,12 +128,19 @@ class FEM_Model():
     def K_elem(self, L_e, h, b):
         S = h * b  # * 1e-4
         I = b * h ** 3 / 12  # * 1e-8
-        K_elem = self.E / L_e * np.array([[S, 0, 0, -S, 0, 0],
-                                          [0, 12 * I / L_e ** 2, 6 * I / L_e, 0, -12 * I / L_e ** 2, 6 * I / L_e],
-                                          [0, 6 * I / L_e, 4 * I, 0, -6 * I / L_e, 2 * I],
-                                          [-S, 0, 0, S, 0, 0],
-                                          [0, -12 * I / L_e ** 2, -6 * I / L_e, 0, 12 * I / L_e ** 2, -6 * I / L_e],
-                                          [0, 6 * I / L_e, 2 * I, 0, -6 * I / L_e, 4 * I]])
+        G = 1 #necessite le module de poisson
+        k = 12 * self.E * I / G / S / L ** 2 # k = 0 : pas de cisaillement
+        Ktc = S * self.E / L_e
+        Kf1 = 12 * self.E * I / L ** 2 / (1 + k)
+        Kf2 = 6 * self.E * I / L ** 2 / (1 + k)
+        Kf3 = self.E * I * (2 - k) / L / (1 + k)
+        Kf4 = self.E * I * (4 + k) / L / (1 + k)
+        K_elem = np.array([[ Ktc,    0,    0, -Ktc,    0,    0],
+                           [   0,  Kf1,  Kf2,    0, -Kf1,  Kf2],
+                           [   0,  Kf2,  Kf4,    0, -Kf2,  Kf3],
+                           [-Ktc,    0,    0,  Ktc,    0,    0],
+                           [   0, -Kf1, -Kf2,    0,  Kf1, -Kf2],
+                           [   0,  Kf2,  Kf3,    0, -Kf2,  Kf4]])
         return K_elem
 
     def stress_2(self):

@@ -7,14 +7,14 @@ rcParams["figure.figsize"] = (8, 6)
 rcParams['font.family'] = 'serif'
 rcParams['font.size'] = 10
 from matplotlib.patches import Rectangle, Polygon
-from log import logger
+#from log import logger
 
 
 class Mesh:
     def __init__(self, dim: int, ax = None, debug=False):
         """ Initiatiolisation d'un maillage à partir de sa dimension"""
-        logger.info("Meshing...")
-        logger.info(f"Mesh dimension : {dim}D")
+        #print("Meshing...")
+        #print(f"Mesh dimension : {dim}D")
         ### Variables
         self.dim = dim
         self.node_list = np.empty((0, dim))
@@ -44,17 +44,17 @@ class Mesh:
         """ Ajout un noeud au maillage """
 
         if len(node) != self.dim:
-            logger.info("Erreur : format du noeud incorrect")
+            print("Erreur : format du noeud incorrect")
         else:
             found, index = self.check_node(node)
             if found == False:
                 self.node_list = np.append(self.node_list, np.array([node]), axis=0)
-                logger.info(f"noeud {node} ajouté")
+                print(f"noeud {node} ajouté")
             else:
-                logger.info("noeud deja dans le maillage")
+                print("noeud deja dans le maillage")
         if self.debug == True:
-            logger.info("Liste des noeuds :")
-            logger.info(self.node_list)
+            print("Liste des noeuds :")
+            print(self.node_list)
 
     #TODO : creer une fonction avec comme argument une liste
     def check_node(self, node):
@@ -89,24 +89,24 @@ class Mesh:
 
     def del_node(self, node):
         if len(node) != self.dim:
-            logger.info("Erreur : format du noeud incorrect")
+            print("Erreur : format du noeud incorrect")
         else:
             found, index = self.check_node(node)
             if found == True:
                 self.node_list = np.delete(self.node_list, index, 0)
-                logger.info(f"noeud {node} supprimé")
+                print(f"noeud {node} supprimé")
             else:
                 print("noeud non trouvé")
             if self.debug == True:
-                logger.info("Liste des noeuds :")
-                logger.info(self.node_list)
+                print("Liste des noeuds :")
+                print(self.node_list)
 
     def reset_node(self):
         self.node_list = np.array([])
-        logger.info("suppression de la liste des noeuds")
+        print("suppression de la liste des noeuds")
         if self.debug == True:
-            logger.info("Liste des noeuds :")
-            logger.info(self.node_list)
+            print("Liste des noeuds :")
+            print(self.node_list)
         return
 
     ### GESTION DES ELEMENTS
@@ -139,14 +139,14 @@ class Mesh:
 
     def del_element(self, element):
         if len(element) != self.dim:
-            logger.info("Erreur : format de l'element incorrect")
+            print("Erreur : format de l'element incorrect")
         else:
             found, index = self.check_elem(element)
             if found == True:
                 self.element_list = np.delete(self.element_list, index, 0)
-                logger.info("element supprimé")
+                print("element supprimé")
             else:
-                logger.info("element non trouvé")
+                print("element non trouvé")
             if self.debug == True:
                 print(self.element_list)
 

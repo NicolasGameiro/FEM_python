@@ -27,17 +27,18 @@ class Sheet(QMainWindow,From_Main):
         self.l.addWidget(self.sc)
         self.pb_add.clicked.connect(self.add_node)
         self.pb_plot.clicked.connect(self.plot)
+        self.pb_add_elem.clicked.connect(self.add_element)
 
         ### Maillage
-        m1 = Mesh(dim=3)
-        m1.add_node([0, 0, 0])
-        m1.add_node([1, 2, 0])
+        self.mesh = Mesh(dim=3)
+        self.mesh.add_node([0, 0, 0])
+        self.mesh.add_node([1, 2, 0])
 
-        self.addNewContent(m1.node_list)
+        self.addNewContent(self.mesh.node_list, self.tw)
 
-        m1.add_node([34, 2, 0])
+        self.mesh.add_element([1,2])
 
-        self.addNewContent(m1.node_list)
+        self.addNewContent(self.mesh.element_list, self.elem_table)
 
     def ToolBar(self):
         AddFile = QAction(QIcon('images/add.png'),'Add File',self)
@@ -45,76 +46,50 @@ class Sheet(QMainWindow,From_Main):
         self.toolBar= self.addToolBar('Add data File')
         self.toolBar.addAction(AddFile)
         AddPlot = QAction(QIcon('images/beam.png'),'Scatter',self)
-        AddPlot.triggered.connect(self.Plot)
+        AddPlot.triggered.connect(self.plot)
         self.toolBar.addAction(AddPlot)
 
     def open_sheet(self):
-        #QFileDialog.getOpenFileName((self,'Open CSV',),os.getenv('Home', 'CSV(*.)'))
-        path = QFileDialog.getOpenFileName(self, "Open", "", "CSV Files (*.csv);;All Files (*)")
+        path = QFileDialog.getOpenFileName(self, "Open", "", "TXT Files (*.txt);;All Files (*)")
         if path[0]!='':
             self.FileN=path[0]
 
     def add_node(self):
-        row = self.tw.rowCount()
-        print(row)
-        self.tw.insertRow(row)
+        self.mesh.add_node([float(self.x.text()), float(self.y.text()), float(self.z.text())])
         print(" x = ",self.x.text(),"| y = ", self.y.text(),"| z = ", self.z.text())
-        self.tw.setItem(row , 0, QTableWidgetItem(self.x.text()))
-        self.tw.setItem(row , 1, QTableWidgetItem(self.y.text()))
-        self.tw.setItem(row , 2, QTableWidgetItem(self.z.text()))
+        self.addNewContent(self.mesh.node_list, self.tw)
 
-    def add_row(self, x ,y ,z):
-        row = self.tw.rowCount()
-        self.tw.insertRow(row)
-        self.tw.setItem(row, 0, QTableWidgetItem(x))
-        self.tw.setItem(row, 1, QTableWidgetItem(y))
-        self.tw.setItem(row, 2, QTableWidgetItem(z))
+    def add_element(self):
+        n_i = int(self.n_i.text())
+        n_j = int(self.n_j.text())
+        nom = self.nom.text()
+        couleur = self.couleur.text()
+        b = float(self.b.text())
+        l = float(self.h.text())
+        print(n_i, n_j, nom, couleur, b, l)
+        self.mesh.add_element([n_i, n_j], nom, couleur, b, l)
+        self.addNewContent(self.mesh.element_list, self.elem_table)
+        #self.mesh.color
+        #self.mesh.Section
 
-    def removeRow(self):
-        if self.tw.rowCount() > 0:
-            self.tw.removeRow(self.tw.rowCount()-1)
 
-    def write_mesh(self, mesh):
-        # clear the table widget
-        self.tw.clear()
-        NL = mesh.node_list
-        for node in NL:
-            print(*[str(n) for n in node])
-            self.add_row(*[str(n) for n in node])
-
-    def addNewContent(self,results):
-        header = self.tw.horizontalHeader()
-        self.tw.clearContents()
+    def addNewContent(self, results, table):
+        header = table.horizontalHeader()
+        table.clearContents()
 
         header.setSectionResizeMode(QHeaderView.Stretch) #ResizeToContents)
         numrows = len(results)
         numcols = len(results[0])
 
-        self.tw.setRowCount(numrows)
-        self.tw.setColumnCount(numcols)
+        table.setRowCount(numrows)
+        table.setColumnCount(numcols)
 
         for row in range(numrows):
             for column in range(numcols):
-                self.tw.setItem(row, column, QTableWidgetItem((str(results[row][column]))))
-
-    def Plot(self):
-        f=self.FileN
-        index = int(self.lineEdit.text())
-        x= []
-        y=[]
-        with open(f, newline = '') as csv_file:
-            my_file = csv.reader(csv_file, delimiter = ',',
-                                 quotechar = '|')
-            for row in my_file:
-                x.append(str(row[0]))
-                y.append(str(row[index]))
-        self.sc.plot(x, y)
+                table.setItem(row, column, QTableWidgetItem((str(results[row][column]))))
 
     def plot(self):
-        x = ["x label", 2, 3]
-        y = ["y lable", 3, 3]
-        self.sc.plot(x, y)
-
+        self.sc.plot_mesh(self.mesh)
 
 class myCanvas(FigureCanvas):
     def __init__(self):
@@ -128,6 +103,23 @@ class myCanvas(FigureCanvas):
         self.ax.set_xlabel(xarray[0])
         self.ax.set_ylabel(yarray[0])
         self.draw()
+
+    def plot_mesh(self, mesh):
+        self.fig.clear()
+        self.ax = self.fig.add_subplot(111)
+        NL = mesh.node_list
+        x = [x for x in NL[:, 0]]
+        y = [y for y in NL[:, 1]]
+        size = 10
+        offset = size / 40000.
+        self.ax.scatter(x, y, c='k', marker="s", s=size, zorder=5)
+        color_list = []
+        for i, location in enumerate(zip(x, y)):
+            self.ax.annotate(i + 1, (location[0] - offset, location[1] - offset), zorder=10)
+        self.ax.set_xlabel("x")
+        self.ax.set_ylabel("y")
+        self.draw()
+
 
 app = QApplication(sys.argv)
 sheet= Sheet()

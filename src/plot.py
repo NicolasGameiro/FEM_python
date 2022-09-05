@@ -84,7 +84,7 @@ class Plot():
             plt.plot([xi, xj], [yi, yj], color='k', lw=1, linestyle='--', label="undeformed")
 
     def plot_forces(self, type='nodal', pic=False, path="./"):
-        plt.figure()
+        fig, ax = plt.subplots()
         F = self.res['F']
         NL = self.res['node']
         EL = self.res['element']
@@ -97,21 +97,136 @@ class Plot():
         ### Trace les efforts
 
         if type == 'nodal':
-            plt.quiver(NL[:, 0] - F[:, 0] / scale_force, NL[:, 1] - F[:, 1] / scale_force, F[:, 0], F[:, 1], color='r',
+            ax.quiver(NL[:, 0] - F[:, 0] / scale_force, NL[:, 1] - F[:, 1] / scale_force, F[:, 0], F[:, 1], color='r',
                        angles='xy', scale_units='xy', scale=scale_force)
+            max_force = np.max(F)
+            dof = 2
+            node = NL[0, :]
+            val = F[0]
+            small = 0.1
+            def_scale = 1
+            self.plot_load(ax, max_force, dof, node, val, small, def_scale)
         elif type == 'dist':
             for elem in self.dist_load[1:]:
                 pt1 = NL[elem[0] - 1]
                 pt2 = NL[elem[1] - 1]
                 self.charge_2D(pt1, pt2, elem[2])
-        plt.grid()
-        plt.ylim([-1, max(NL[:, 0])])
-        plt.xlim([-1, max(NL[:, 1])])
-        plt.axis('equal')
+        ax.grid()
+        ax.set_ylim([-1, max(NL[:, 0])])
+        ax.set_xlim([-1, max(NL[:, 1])])
+        ax.axis('equal')
         # plt.show()
         if pic:
             plt.savefig(path + 'load.png', format='png', dpi=200)
         return
+
+    def plot_load(self, ax, max_force, dof, node, val, small):
+        """Plots a graphical representation of a nodal force. A straight arrow is plotted for a
+        translational load and a curved arrow is plotted for a moment.
+
+        :param ax: Axes object on which to plot
+        :type ax: :class:`matplotlib.axes.Axes`
+        :param max_force: Maximum translational nodal load
+        :type max_force: float
+        :param dof: degre of freedom of the load applied
+        :type dof: int
+        :param node: coordinate of the node
+        :type node: np.array
+        :param val: load value at the node
+        :type val: float
+        :param small: A dimension used to scale the support
+        :type small: float
+        """
+
+        x = node[0]
+        y = node[1]
+
+        if max_force == 0:
+            val = 1
+        else:
+            val = val / max_force
+
+        offset = 0.5 * small
+        (angle, num_el) = (0, 1)
+        s = np.sin(angle * np.pi / 180)
+        c = np.cos(angle * np.pi / 180)
+
+        # plot nodal force
+        if dof in [0, 1]:
+            lf = abs(val) * 1.5 * small  # arrow length
+            lh = 0.6 * small  # arrow head length
+            wh = 0.6 * small  # arrow head width
+            lf = max(lf, lh * 1.5)
+
+            n = np.array([c, s])
+            inward = (n[dof] == 0 or np.sign(n[dof]) == np.sign(val))
+
+            to_rotate = (dof) * 90 + (n[dof] > 0) * 180
+            sr = np.sin(to_rotate * np.pi / 180)
+            cr = np.cos(to_rotate * np.pi / 180)
+            rot_mat = np.array([[cr, -sr], [sr, cr]])
+
+            ll = np.array([[offset, offset + lf], [0, 0]])
+            p0 = offset + (not inward) * lf
+            p1 = p0 + (inward) * lh - (not inward) * lh
+            pp = np.array([[p1, p1, p0], [-wh / 2, wh / 2, 0]])
+
+            # correct end of arrow line
+            if inward:
+                ll[0, 0] += lh
+            else:
+                ll[0, 1] -= lh
+
+            rl = np.matmul(rot_mat, ll)
+            rp = np.matmul(rot_mat, pp)
+            rp[0, :] += x
+            rp[1, :] += y
+            s = 0
+            e = None
+
+        # plot nodal moment
+        else:
+            lh = 0.4 * small  # arrow head length
+            wh = 0.4 * small  # arrow head width
+            rr = 1.5 * small
+            ths = np.arange(100, 261)
+            rot_mat = np.array([[c, -s], [s, c]])
+
+            # make arrow tail around (0,0)
+            ll = np.array([rr * np.cos(ths * np.pi / 180), rr * np.sin(ths * np.pi / 180)])
+
+            # make arrow head at (0,0)
+            pp = np.array([[-lh, -lh, 0], [-wh / 2, wh / 2, 0]])
+
+            # rotate arrow head around (0,0)
+            if val > 0:
+                thTip = 90 - ths[11]
+                xTip = ll[:, -1]
+                s = 0
+                e = -1
+            else:
+                thTip = ths[11] - 90
+                xTip = ll[:, 0]
+                s = 1
+                e = None
+
+            cTip = np.cos(thTip * np.pi / 180)
+            sTip = np.sin(thTip * np.pi / 180)
+            rTip = np.array([[cTip, -sTip], [sTip, cTip]])
+            pp = np.matmul(rTip, pp)
+
+            # shift arrow head to tip
+            pp[0, :] += xTip[0]
+            pp[1, :] += xTip[1]
+
+            # rotate arrow to align it with the node
+            rl = np.matmul(rot_mat, ll)
+            rp = np.matmul(rot_mat, pp)
+            rp[0, :] += x
+            rp[1, :] += y
+
+        ax.plot(rl[0, s:e] + x, rl[1, s:e] + y, 'r-', linewidth=2)
+        ax.add_patch(Polygon(np.transpose(rp), facecolor='r'))
 
     def interpol(self, x1, x2, y1, y2, y3, y4, r):
         x3 = x1
@@ -170,10 +285,18 @@ class Plot():
         return
 
     def plot_diagram(self, type="M"):
+        """ Plot diagram on the mesh
+
+        :param type: choose the type of diagram to plot (options : M)
+        :type type: str
+        :return:
+        """
         Reactions = self.res["f"]
         NL, EL = self.mesh.node_list, self.mesh.element_list
         fig, ax = plt.subplots(3)
+
         self.plot_mesh_2D()
+
         for elem in EL:
             ni, nj = elem
             xi, xj = NL[ni - 1][0], NL[nj - 1][0]

@@ -129,12 +129,12 @@ class FEM_Model():
         S = h * b  # * 1e-4
         I = b * h ** 3 / 12  # * 1e-8
         G = 1 #necessite le module de poisson
-        k = 12 * self.E * I / G / S / L ** 2 # k = 0 : pas de cisaillement
+        k = 12 * self.E * I / G / S / L_e ** 2 # k = 0 : pas de cisaillement
         Ktc = S * self.E / L_e
-        Kf1 = 12 * self.E * I / L ** 2 / (1 + k)
-        Kf2 = 6 * self.E * I / L ** 2 / (1 + k)
-        Kf3 = self.E * I * (2 - k) / L / (1 + k)
-        Kf4 = self.E * I * (4 + k) / L / (1 + k)
+        Kf1 = 12 * self.E * I / L_e ** 2 / (1 + k)
+        Kf2 = 6 * self.E * I / L_e ** 2 / (1 + k)
+        Kf3 = self.E * I * (2 - k) / L_e / (1 + k)
+        Kf4 = self.E * I * (4 + k) / L_e / (1 + k)
         K_elem = np.array([[ Ktc,    0,    0, -Ktc,    0,    0],
                            [   0,  Kf1,  Kf2,    0, -Kf1,  Kf2],
                            [   0,  Kf2,  Kf4,    0, -Kf2,  Kf3],

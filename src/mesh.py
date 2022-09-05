@@ -11,14 +11,31 @@ from matplotlib.patches import Rectangle, Polygon
 
 
 class Mesh:
-    def __init__(self, dim: int, ax = None, debug=False):
-        """ Initiatiolisation d'un maillage à partir de sa dimension"""
+    def __init__(self, dim: int, node_list = None, element_list = None, ax = None, debug=False):
+        """ Initiatiolisation d'un maillage à partir de sa dimension
+
+        :param dim: define the dimension of the mesh (2 or 3)
+        :type dim: int
+        :param ax: axis to plot the mesh
+        :type ax: axis from figure object
+        :param debug: parameter to activate the debug mode (i.e more print)
+        :type debug: bool
+        """
         #print("Meshing...")
         #print(f"Mesh dimension : {dim}D")
         ### Variables
         self.dim = dim
-        self.node_list = np.empty((0, dim))
-        self.element_list = np.empty((0, 2), dtype=int)
+
+        if node_list is None:
+            self.node_list = np.empty((0, dim))
+        else :
+            self.node_list = node_list
+
+        if element_list is None:
+            self.element_list = np.empty((0, 2), dtype=int)
+        else :
+            self.element_list = element_list
+
         self.name = np.empty((0, 1))
         self.color = np.empty((0, 1))
         self.Section = np.empty((0, 2))
@@ -32,7 +49,7 @@ class Mesh:
         self.color_ex = np.empty((0, 1))
         self.Section_ex = np.empty((0, 2))
 
-        if ax == None :
+        if ax is None :
             if self.dim == 2 :
                 self.figure_axis = plt.figure(figsize=(8, 6)).add_subplot(111)
             else :
@@ -41,23 +58,28 @@ class Mesh:
             self.figure_axis = ax
 
     def add_node(self, node: list):
-        """ Ajout un noeud au maillage """
+        """ Ajout un noeud au maillage
+
+        :param node: coordinates of the node
+        :type node: list
+        """
 
         if len(node) != self.dim:
             print("Erreur : format du noeud incorrect")
         else:
-            found, index = self.check_node(node)
+            found, index = self._check_node(node)
             if found == False:
                 self.node_list = np.append(self.node_list, np.array([node]), axis=0)
                 print(f"noeud {node} ajouté")
             else:
                 print("noeud deja dans le maillage")
+
         if self.debug == True:
             print("Liste des noeuds :")
             print(self.node_list)
 
     #TODO : creer une fonction avec comme argument une liste
-    def check_node(self, node):
+    def _check_node(self, node):
         """Verification qu'un noeud n'est pas déjà dans le maillage"""
 
         index = -1
@@ -88,18 +110,65 @@ class Mesh:
         return found, index
 
     def del_node(self, node):
+        """ Delete a node from the mesh
+
+        :param node: coordinates of the node
+        :type node: list
+        """
+
         if len(node) != self.dim:
             print("Erreur : format du noeud incorrect")
         else:
-            found, index = self.check_node(node)
+            found, index = self._check_node(node)
             if found == True:
                 self.node_list = np.delete(self.node_list, index, 0)
                 print(f"noeud {node} supprimé")
             else:
                 print("noeud non trouvé")
+
             if self.debug == True:
                 print("Liste des noeuds :")
                 print(self.node_list)
+
+    def get_node_lims(self):
+        """Finds and returns the minimum and maximum x, y and z values within the current mesh.
+
+        :returns: (xmin, xmax, ymin, ymax, zmin, zmax)
+        :rtype: tuple(float)
+        """
+
+        for (i, node) in enumerate(self.node_list):
+            if i == 0:
+                if self.dim == 3:
+                    xmin = node[0]
+                    xmax = node[0]
+                    ymin = node[1]
+                    ymax = node[1]
+                    zmin = node[2]
+                    zmax = node[2]
+                else:
+                    xmin = node[0]
+                    xmax = node[0]
+                    ymin = node[1]
+                    ymax = node[1]
+
+            if self.dim == 3:
+                xmin = min(xmin, node[0])
+                xmax = max(xmax, node[0])
+                ymin = min(ymin, node[1])
+                ymax = max(ymax, node[1])
+                zmin = min(zmin, node[2])
+                zmax = max(zmax, node[2])
+            else:
+                xmin = min(xmin, node[0])
+                xmax = max(xmax, node[0])
+                ymin = min(ymin, node[1])
+                ymax = max(ymax, node[1])
+
+        if self.dim == 3:
+            return (xmin, xmax, ymin, ymax, zmin, zmax)
+        else:
+            return (xmin, xmax, ymin, ymax)
 
     def reset_node(self):
         self.node_list = np.array([])
@@ -231,6 +300,15 @@ class Mesh:
     """
 
     def plot_mesh(self, ex=False, pic=False, path="./"):
+        """ Plot the mesh
+
+        :param ex: if True use the extended mesh for plotting
+        :type ex: bool
+        :param pic: if True save a figure of the plot
+        :type pic: bool
+        :param path:
+        :return:
+        """
         if ex == True:
             NL = self.node_list_ex
             EL = self.element_list_ex
@@ -285,9 +363,20 @@ class Mesh:
             # pour verifier que la legende n'existe pas deja
             if (color == color[i]).sum() > 1:
                 color_list.append(color[i])
+
+        #set initial plot limits
+        (xmin, xmax, ymin, ymax) = self.get_node_lims()
+        ax.set_xlim(xmin - 1e-12, xmax)
+        ax.set_ylim(ymin - 1e-12, ymax)
+
+        #get 2% of the maximum dimension
+        self.small = 0.02 * max(xmax - xmin, ymax - ymin)
+
         ax.axis('equal')
         ax.legend()
         plt.grid()
+
+        # Save plot to png
         if pic:
             plt.savefig(path + 'geom.png', format='png', dpi=200)
         return ax, pts
@@ -306,6 +395,8 @@ class Mesh:
             zi, zj = NL[EL[i, 0] - 1, 2], NL[EL[i, 1] - 1, 2]
             line, = ax.plot([xi, xj], [yi, yj], [zi, zj], color='k', lw=1, linestyle='--')
             line.set_label('undeformed')
+
+        # Plot information
         ax.set_title("Structure")
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
@@ -313,6 +404,8 @@ class Mesh:
         ax.legend()
         ax.view_init(elev=20., azim=-20.)
         ax.set_box_aspect([1, 1, 1])
+
+        # Save plot to png
         if pic:
             plt.savefig(path + 'geom.png', format='png', dpi=200)
         return ax, pts

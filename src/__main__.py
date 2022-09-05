@@ -159,6 +159,7 @@ def test_cantilever():
     mesh.add_node([0, 0])
     mesh.add_node([3, 0])
     mesh.add_element([1, 2], "entrait", "r", 0.15, 0.15, 10)
+    print(mesh.get_node_lims())
     f = FEM_Model(mesh)
     f.apply_load([0, -1000, 0], 11)
     print("load" , f.load)

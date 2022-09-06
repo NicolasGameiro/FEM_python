@@ -151,24 +151,22 @@ class Mesh:
                     xmax = node[0]
                     ymin = node[1]
                     ymax = node[1]
+                    zmin = 0
+                    zmax = 0
+
+            xmin = min(xmin, node[0])
+            xmax = max(xmax, node[0])
+            ymin = min(ymin, node[1])
+            ymax = max(ymax, node[1])
 
             if self.dim == 3:
-                xmin = min(xmin, node[0])
-                xmax = max(xmax, node[0])
-                ymin = min(ymin, node[1])
-                ymax = max(ymax, node[1])
                 zmin = min(zmin, node[2])
                 zmax = max(zmax, node[2])
             else:
-                xmin = min(xmin, node[0])
-                xmax = max(xmax, node[0])
-                ymin = min(ymin, node[1])
-                ymax = max(ymax, node[1])
+                zmin = 0
+                zmax = 0
 
-        if self.dim == 3:
-            return (xmin, xmax, ymin, ymax, zmin, zmax)
-        else:
-            return (xmin, xmax, ymin, ymax)
+        return (xmin, xmax, ymin, ymax, zmin, zmax)
 
     def reset_node(self):
         self.node_list = np.array([])
@@ -299,7 +297,11 @@ class Mesh:
     - Nombre d'éléments : {len(self.element_list)}
     """
 
-    def plot_mesh(self, ex=False, pic=False, path="./"):
+    # --------------
+    # plot functions
+    # --------------
+
+    def plot_mesh(self, ax=None, ex=False, pic=False, path="./"):
         """ Plot the mesh
 
         :param ex: if True use the extended mesh for plotting
@@ -309,6 +311,10 @@ class Mesh:
         :param path:
         :return:
         """
+
+        if ax is None:
+            (fig, ax) = plt.subplots()
+
         if ex == True:
             NL = self.node_list_ex
             EL = self.element_list_ex
@@ -321,65 +327,114 @@ class Mesh:
             name = self.name
             color = self.color
             section = self.Section
+
         if self.dim == 2:
-            self.figure_axis, pts = self.geom2D(NL, EL, name, color, section, pic)
+            self.figure_axis = self.plot_2D(ax, pic=pic)
         else:
-            self.figure_axis, pts = self.geom3D(NL, EL, name, color, section, pic)
-        return self.figure_axis, pts
+            self.figure_axis = self.geom3D(ax, NL, EL, name, color, section, pic)
 
-    def geom2D(self, NL, EL, name, color, section, pic=False, path="./"):
-        ax = self.figure_axis
-        x = [x for x in NL[:, 0]]
-        y = [y for y in NL[:, 1]]
-        size = 10
-        offset = size / 40000.
-        pts = ax.scatter(x, y, c='k', marker="s", s=size, zorder=5)
-        color_list = []
-        for i, location in enumerate(zip(x, y)):
-            ax.annotate(i + 1, (location[0] - offset, location[1] - offset), zorder=10)
-            #ax.text(location[0], location[1], str(i + 1), rotation = 45)
-        for i in range(len(EL)):
-            xi, xj = NL[EL[i, 0] - 1, 0], NL[EL[i, 1] - 1, 0]
-            yi, yj = NL[EL[i, 0] - 1, 1], NL[EL[i, 1] - 1, 1]
-            ax.plot([xi, xj], [yi, yj], color=color[i], lw=2, linestyle='--',
-                    label=name[i] if color[i] not in color_list else '')
+        return self.figure_axis
 
-            h = section[i][0] / 100
+    def plot_2D(self, ax, section=False, pic=False, path="./"):
 
-            if xi != xj:
-                pt1 = [xi, yi - h / 2]
-                pt2 = [xj, yj - h / 2]
-                pt3 = [xj, yj + h / 2]
-                pt4 = [xi, yi + h / 2]
-            else:
-                pt1 = [xi - h / 2, yi]
-                pt2 = [xj - h / 2, yj]
-                pt3 = [xj + h / 2, yj]
-                pt4 = [xi + h / 2, yi]
+        # set initial plot limits
+        (xmin, xmax, ymin, ymax, _, _) = self.get_node_lims()
 
-            x = pt1[0], pt2[0], pt3[0], pt4[0], pt1[0]
-            y = pt1[1], pt2[1], pt3[1], pt4[1], pt1[1]
-            ax.add_patch(Polygon(xy=list(zip(x, y)), color=color[i], fill=True, alpha=0.3, lw=0))
-            # pour verifier que la legende n'existe pas deja
-            if (color == color[i]).sum() > 1:
-                color_list.append(color[i])
+        # get 2% of the maximum dimension
+        small = 0.02 * max(xmax - xmin, ymax - ymin)
 
-        #set initial plot limits
-        (xmin, xmax, ymin, ymax) = self.get_node_lims()
-        ax.set_xlim(xmin - 1e-12, xmax)
-        ax.set_ylim(ymin - 1e-12, ymax)
+        #self.plot_nodes(ax)
 
-        #get 2% of the maximum dimension
-        self.small = 0.02 * max(xmax - xmin, ymax - ymin)
+        self.plot_elements(ax, section)
 
-        ax.axis('equal')
-        ax.legend()
-        plt.grid()
+        #ax.set_xlim(xmin - small, xmax)
+        #ax.set_ylim(ymin - small, ymax)
+
+        #ax.axis('equal')
+        ax.set_aspect(1)
+        plt.box(on=None)
+
+        # Shrink current axis by 20%
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+        # Put a legend to the right of the current axis
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        #plt.grid()
 
         # Save plot to png
         if pic:
             plt.savefig(path + 'geom.png', format='png', dpi=200)
-        return ax, pts
+        return ax
+
+    def plot_nodes(self, ax):
+        """ Method used to generate a plot of nodes
+
+        :param ax: Axes object on which to plot
+        :type ax: :class:`matplotlib.axes.Axes`
+        :return:
+        """
+
+        # get x and y coordinate of the nodes
+        x = [x for x in self.node_list[:, 0]]
+        y = [y for y in self.node_list[:, 1]]
+
+        size = 1
+        offset = 0.05 * size # 5% of the size of the nodes
+        print(offset)
+
+        ax.scatter(x, y, c='k', marker="s", zorder=5)
+
+        for i in range(len(self.node_list)):
+            ax.annotate(i + 1, (x[i] - offset, y[i] - offset), zorder=6)
+            #ax.text(x[i], y[i], str(i + 1), rotation = 45)
+
+        return
+
+    def plot_elements(self, ax, section=False):
+        """ Method used to generate a plot of elements
+
+        :param ax: Axes object on which to plot
+        :type ax: :class:`matplotlib.axes.Axes`
+        :return:
+        """
+        EL = self.element_list
+        NL = self.node_list
+        name = self.name
+        color = self.color
+
+        color_list = []
+        for i in range(len(EL)):
+            xi, xj = NL[EL[i, 0] - 1, 0], NL[EL[i, 1] - 1, 0]
+            yi, yj = NL[EL[i, 0] - 1, 1], NL[EL[i, 1] - 1, 1]
+            ax.plot([xi, xj], [yi, yj], color=color[i], lw=2, linestyle='--',
+                    label=name[i] if color[i] not in color_list else '', zorder=0)
+
+            # Plot the section of the element
+            if section:
+                section = self.Section
+                h = section[i][0] / 100
+
+                if xi != xj:
+                    pt1 = [xi, yi - h / 2]
+                    pt2 = [xj, yj - h / 2]
+                    pt3 = [xj, yj + h / 2]
+                    pt4 = [xi, yi + h / 2]
+                else:
+                    pt1 = [xi - h / 2, yi]
+                    pt2 = [xj - h / 2, yj]
+                    pt3 = [xj + h / 2, yj]
+                    pt4 = [xi + h / 2, yi]
+
+                x = pt1[0], pt2[0], pt3[0], pt4[0], pt1[0]
+                y = pt1[1], pt2[1], pt3[1], pt4[1], pt1[1]
+                ax.add_patch(Polygon(xy=list(zip(x, y)), color=color[i], fill=True, alpha=0.3, lw=0))
+
+            # pour verifier que la legende n'existe pas deja
+            if (color == color[i]).sum() > 1:
+                color_list.append(color[i])
+
+        return
 
     def geom3D(self, NL, EL, name, color, section, pic=False, path="./"):
         ax = self.figure_axis
@@ -420,4 +475,3 @@ if __name__ == "__main__":
     mesh.add_element([2, 3], "barre", "b", 15, 15, 5)
     mesh.add_element([3, 1], "bracon", "r", 10, 10, 4)
     mesh.plot_mesh()
-    plt.show()

@@ -20,6 +20,9 @@ Created on Sun May  1 12:41:46 2022
 import numpy as np
 import math
 from prettytable import PrettyTable as pt
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle, Polygon
+from mesh import Mesh
 
 
 class FEM_Model():
@@ -52,6 +55,23 @@ class FEM_Model():
                 print(self.load)
         else:
             print("Error : uncorrect load format")
+
+    def get_nodes_loaded(self):
+        """ Method to get the list of the index of loaded nodes
+
+        :return: list of loaded nodes
+        """
+        nodes_loaded = []
+        for node_index, row in enumerate(self.load):
+
+            # Test if row is not all zeros
+            if row.any():
+                print("Node %s is loaded" % node_index)
+                nodes_loaded.append(node_index)
+
+        return nodes_loaded
+
+
 
     def apply_distributed_load(self, q, element):
         L = self.get_length(element)
@@ -564,9 +584,485 @@ class FEM_Model():
                              np.format_float_scientific(self.U[i * 6 + 5], precision=2, exp_digits=2)])
         print(tab)
 
+    # --------------
+    # plot functions
+    # --------------
+
+    def plot_model(self, ax=None, supports=True, loads=True, deformed=False, def_scale=1):
+        """Method used to plot the structural mesh in the undeformed and/or deformed state. If no
+        axes object is provided, a new axes object is created. N.B. this method is adapted from the
+        MATLAB code by F.P. van der Meer: plotGeom.m.
+
+        :param ax: Axes object on which to plot
+        :type ax: :class:`matplotlib.axes.Axes`
+        :param bool supports: Whether or not the freedom case supports are rendered
+        :param bool loads: Whether or not the load case loads are rendered
+        :param bool undeformed: Whether or not the undeformed structure is plotted
+        :param bool deformed: Whether or not the deformed structure is plotted
+        :param float def_scale: Deformation scale used for plotting the deformed structure
+        :param bool dashed: Whether or not to plot the structure with dashed lines if only the undeformed structure is to be plotted
+        """
+
+        if ax is None:
+            (fig, ax) = plt.subplots()
+
+        if not deformed:
+            self.mesh.plot_mesh(ax=ax)
+        else:
+            pass
+
+        # set initial plot limits
+        (xmin, xmax, ymin, ymax, _, _) = self.mesh.get_node_lims()
+        #ax.set_xlim(xmin - 1e-12, xmax + 1e-12)
+        #ax.set_ylim(ymin - 1e-12, ymax + 1e-12)
+
+        # get 2% of the maxmimum dimension
+        small = 0.02 * max(xmax - xmin, ymax - ymin)
+
+        if loads:
+            print("================ Plot loads ====================")
+            # iterate on the loaded nodes
+            for i in self.get_nodes_loaded():
+                max_force = np.abs(self.load).max()
+                print("traitement du node %s" %i)
+                print("max force : %s" %max_force)
+                print(self.load[i])
+
+                for j in range(len(self.load[i])):
+                    load = self.load[i,j]
+                    # get the dof of the apply load
+                    if not load == 0:
+                        dof = j
+                        print("dof :", dof)
+                        self.plot_nodal_load(ax, i, load, max_force, dof, small)
+
+        if supports:
+            print("================ Plot supports ====================")
+            BC = self.get_bc()
+            for i, bc in enumerate(BC):
+                print("traitement node %s" % i)
+                print("bc :", bc)
+                self.plot_supports(ax, list(bc), i+1, small)
+
+        # plot layout
+        plt.axis('tight')
+        ax.set_xlim(self.wide_lim(ax.get_xlim()))
+        ax.set_ylim(self.wide_lim(ax.get_ylim()))
+
+        limratio = np.diff(ax.get_ylim())/np.diff(ax.get_xlim())
+
+        if limratio < 0.5:
+            ymid = np.mean(ax.get_ylim())
+            ax.set_ylim(ymid + (ax.get_ylim() - ymid) * 0.5 / limratio)
+        elif limratio > 1:
+            xmid = np.mean(ax.get_xlim())
+            ax.set_xlim(xmid + (ax.get_xlim() - xmid) * limratio)
+
+        ax.set_aspect(1)
+        plt.box(on=None)
+        plt.show()
+
+        return
+
+    def plot_nodal_load(self, ax, node_index, val, max_force, dof, small):
+        """Plots a graphical representation of a nodal force. A straight arrow is plotted for a
+        translational load and a curved arrow is plotted for a moment.
+
+        :param ax: Axes object on which to plot
+        :type ax: :class:`matplotlib.axes.Axes`
+        :param float max_force: Maximum translational nodal load
+        :param float small: A dimension used to scale the support
+        :param get_support_angle: A function that returns the support angle and the number of
+            connected elements
+        :type get_support_angle: :func:`feastruct.post.post.PostProcessor.get_support_angle`
+        :param analysis_case: Analysis case
+        :type analysis_case: :class:`~feastruct.fea.cases.AnalysisCase`
+        :param bool deformed: Represents whether or not the node locations are deformed based on
+            the results of case id
+        :param float def_scale: Value used to scale deformations
+        """
+
+        node = self.mesh.node_list[node_index]
+        x = node[0]
+        y = node[1]
+
+        print(x,y)
+
+        if max_force == 0:
+            val = 1
+        else:
+            val = val / max_force
+
+        offset = 0.5 * small
+        (angle, num_el) = self.get_support_angle(node_index+1)
+        s = np.sin(angle * np.pi / 180)
+        c = np.cos(angle * np.pi / 180)
+
+        # plot nodal force
+        if dof in [0, 1]:
+            lf = abs(val) * 1.5 * small  # arrow length
+            lh = 0.6 * small  # arrow head length
+            wh = 0.6 * small  # arrow head width
+            lf = max(lf, lh * 1.5)
+
+            n = np.array([c, s])
+            inward = (n[dof] == 0 or np.sign(n[dof]) == np.sign(val))
+
+            to_rotate = (dof) * 90 + (n[dof] > 0) * 180
+            sr = np.sin(to_rotate * np.pi / 180)
+            cr = np.cos(to_rotate * np.pi / 180)
+            rot_mat = np.array([[cr, -sr], [sr, cr]])
+
+            ll = np.array([[offset, offset + lf], [0, 0]])
+            p0 = offset + (not inward) * lf
+            p1 = p0 + (inward) * lh - (not inward) * lh
+            pp = np.array([[p1, p1, p0], [-wh / 2, wh / 2, 0]])
+
+            # correct end of arrow line
+            if inward:
+                ll[0, 0] += lh
+            else:
+                ll[0, 1] -= lh
+
+            rl = np.matmul(rot_mat, ll)
+            rp = np.matmul(rot_mat, pp)
+            rp[0, :] += x
+            rp[1, :] += y
+            s = 0
+            e = None
+
+        # plot nodal moment
+        else:
+            lh = 0.4 * small  # arrow head length
+            wh = 0.4 * small  # arrow head width
+            rr = 1.5 * small
+            ths = np.arange(100, 261)
+            rot_mat = np.array([[c, -s], [s, c]])
+
+            # make arrow tail around (0,0)
+            ll = np.array([rr * np.cos(ths * np.pi / 180), rr * np.sin(ths * np.pi / 180)])
+
+            # make arrow head at (0,0)
+            pp = np.array([[-lh, -lh, 0], [-wh / 2, wh / 2, 0]])
+
+            # rotate arrow head around (0,0)
+            if val > 0:
+                thTip = 90 - ths[11]
+                xTip = ll[:, -1]
+                s = 0
+                e = -1
+            else:
+                thTip = ths[11] - 90
+                xTip = ll[:, 0]
+                s = 1
+                e = None
+
+            cTip = np.cos(thTip * np.pi / 180)
+            sTip = np.sin(thTip * np.pi / 180)
+            rTip = np.array([[cTip, -sTip], [sTip, cTip]])
+            pp = np.matmul(rTip, pp)
+
+            # shift arrow head to tip
+            pp[0, :] += xTip[0]
+            pp[1, :] += xTip[1]
+
+            # rotate arrow to align it with the node
+            rl = np.matmul(rot_mat, ll)
+            rp = np.matmul(rot_mat, pp)
+            rp[0, :] += x
+            rp[1, :] += y
+
+        ax.plot(rl[0, s:e] + x, rl[1, s:e] + y, 'k-', linewidth=2)
+        ax.add_patch(Polygon(np.transpose(rp), facecolor='k'))
+        print("plot force")
+
+        return
+
+    def plot_dist_load(self, ax):
+        pass
+
+    def plot_supports(self, ax, bc, node_index, small):
+        if bc not in ([1, 1, 0], [0, 1, 0]):
+            (angle, num_el) = self.get_support_angle(node_index)
+            print(angle, num_el)
+
+        if bc == [1, 0, 0]:
+            # ploy a y-roller
+            angle = round(angle / 180) * 180
+            self.plot_xysupport(ax, angle, True, num_el == 1, small, analysis_case, deformed,
+                                def_scale)
+
+        elif bc == [0, 1, 0]:
+            (angle, num_el) = self.get_support_angle(node_index, 1)
+            # plot an x-roller
+            if np.mod(angle + 1, 180) < 2:  # prefer support below
+                angle = 90
+            else:
+                angle = round((angle + 90) / 180) * 180 - 90
+
+            node = self.mesh.node_list[node_index - 1]
+            self.plot_xysupport(ax, node, angle, True, num_el == 1, small)
+            return
+
+        elif bc == [1, 1, 0]:
+            # plot a hinge
+            (angle, num_el) = self.get_support_angle(node_index, 1)
+
+            node = self.mesh.node_list[node_index-1]
+            self.plot_xysupport(ax, node, angle, False, num_el == 1, small)
+            return
+
+        elif bc == [0, 0, 1]:
+            ax.plot(self.node.x, self.node.y, 'kx', markersize=8)
+
+        else:
+            # plot a support with moment bc
+            if bc == [1, 1, 1]:
+                # plot a fixed support
+                s = np.sin(angle * np.pi / 180)
+                c = np.cos(angle * np.pi / 180)
+                rot_mat = np.array([[c, -s], [s, c]])
+                line = np.array([[0, 0], [-1, 1]]) * small
+                rect = np.array([[-0.6, -0.6, 0, 0], [-1, 1, 1, -1]]) * small
+                ec = 'none'
+
+            elif bc == [1, 0, 1]:
+                # plot y-roller block
+                angle = round(angle / 180) * 180
+                s = np.sin(angle * np.pi / 180)
+                c = np.cos(angle * np.pi / 180)
+                rot_mat = np.array([[c, -s], [s, c]])
+                line = np.array([[-0.85, -0.85], [-1, 1]]) * small
+                rect = np.array([[-0.6, -0.6, 0, 0], [-1, 1, 1, -1]]) * small
+                ec = 'k'
+
+            elif bc == [0, 1, 1]:
+                # plot x-roller block
+                angle = round((angle + 90) / 180) * 180 - 90
+                s = np.sin(angle * np.pi / 180)
+                c = np.cos(angle * np.pi / 180)
+                rot_mat = np.array([[c, -s], [s, c]])
+                line = np.array([[-0.85, -0.85], [-1, 1]]) * small
+                rect = np.array([[-0.6, -0.6, 0, 0], [-1, 1, 1, -1]]) * small
+                ec = 'k'
+            else:
+                return
+
+            rot_line = np.matmul(rot_mat, line)
+            rot_rect = np.matmul(rot_mat, rect)
+
+            rot_line[0, :] += self.mesh.node_list[node_index-1,0]
+            rot_line[1, :] += self.mesh.node_list[node_index-1,1]
+            rot_rect[0, :] += self.mesh.node_list[node_index-1,0]
+            rot_rect[1, :] += self.mesh.node_list[node_index-1,1]
+
+        ax.plot(rot_line[0, :], rot_line[1, :], 'k-', linewidth=1)
+        ax.add_patch(Polygon(np.transpose(rot_rect), facecolor=(0.7, 0.7, 0.7), edgecolor=ec))
+
+    def plot_xysupport(self, ax, node, angle, roller, hinge, small):
+
+        # determine coordinates of node
+        x = node[0]
+        y = node[1]
+
+        # determine coordinates of triangle
+        dx = small
+        h = np.sqrt(3) / 2
+        triangle = np.array([[-h, -h, -h, 0, -h], [-1, 1, 0.5, 0, -0.5]]) * dx
+        s = np.sin(angle * np.pi / 180)
+        c = np.cos(angle * np.pi / 180)
+        rot_mat = np.array([[c, -s], [s, c]])
+        rot_triangle = np.matmul(rot_mat, triangle)
+
+        if roller:
+            line = np.array([[-1.1, -1.1], [-1, 1]]) * dx
+            rot_line = np.matmul(rot_mat, line)
+            ax.plot(rot_line[0, :] + x, rot_line[1, :] + y, 'k-', linewidth=1)
+        else:
+            rect = np.array([[-1.4, -1.4, -h, -h], [-1, 1, 1, -1]]) * dx
+            rot_rect = np.matmul(rot_mat, rect)
+            rot_rect[0, :] += x
+            rot_rect[1, :] += y
+            ax.add_patch(Polygon(np.transpose(rot_rect), facecolor=(0.7, 0.7, 0.7)))
+
+        ax.plot(rot_triangle[0, :] + x, rot_triangle[1, :] + y, 'k-', linewidth=1)
+
+        if hinge:
+            ax.plot(x, y, 'ko', markerfacecolor='w', linewidth=1, markersize=4)
+
+    def plot_force(self, ax):
+        pass
+
+    def plot_reactions(self, ax):
+        """Method used to generate a plot of the reaction forces.
+
+        :param ax: Axes object on which to plot
+        :type ax: :class:`matplotlib.axes.Axes`
+        :return:
+        """
+
+        (fig, ax) = plt.subplots()
+
+        # get size of structure
+        (xmin, xmax, ymin, ymax, _, _) = self.mesh.get_node_lims()
+
+        # determine maximum reaction force
+        max_reaction = 0
+
+        for line in self.get_bc():
+            if line in [0, 0, 1]:
+                reaction = support.get_reaction()
+                max_reaction = max(max_reaction, abs(reaction))
+
+        small = 0.02 * max(xmax - xmin, ymax - ymin)
+
+        # plot reactions
+        for support in analysis_case.freedom_case.items:
+            support.plot_reaction(
+                ax=ax, max_reaction=max_reaction, small=small,
+                get_support_angle=self.get_support_angle, analysis_case=analysis_case)
+
+        # plot the undeformed structure
+        self.plot_geom(analysis_case=analysis_case, ax=ax, supports=False)
+
+    def get_support_angle(self, node, prefer_dir=None):
+        """Given a node object, returns the optimal angle to plot a support. Essentially finds the
+        average angle of the connected elements and considers a preferred plotting direction. N.B.
+        this method is adapted from the MATLAB code by F.P. van der Meer: plotGeom.m.
+
+        :param node: Node object
+        :type node: :class:`~feastruct.fea.node.node`
+        :param int prefer_dir: Preferred direction to plot the support, where 0 corresponds to the
+            x-axis and 1 corresponds to the y-axis
+        """
+
+        print("===> Enter get support angle")
+        print(node)
+        # find angles to connected elements
+        phi = []
+        num_el = 0
+
+        # loop through each element in the mesh
+        for el in self.mesh.element_list:
+            print(el)
+            # if the current element is connected to the node
+            if node in el:
+                num_el += 1
+                # loop through all the nodes connected to the element
+                for el_node in el:
+                    print(el_node, node)
+                    # if the node is not the node in question
+                    if not el_node == node:
+                        node_test = self.mesh.node_list[node-1]
+                        node_connected = self.mesh.node_list[el_node-1]
+                        dx = [node_connected[0] - node_test[0], node_connected[1] - node_test[1]]
+                        phi.append(np.arctan2(dx[1], dx[0]) / np.pi * 180)
+
+        phi.sort()
+        phi.append(phi[0] + 360)
+        i0 = np.argmax(np.diff(phi))
+        angle = (phi[i0] + phi[i0+1]) / 2 + 180
+
+        print(phi)
+
+        if prefer_dir is not None:
+            if prefer_dir == 1:
+                if max(np.sin([phi[i0] * np.pi / 180, phi[i0+1] * np.pi / 180])) > -0.1:
+                    angle = 90
+            elif prefer_dir == 0:
+                if max(np.cos([phi[i0] * np.pi / 180, phi[i0+1] * np.pi / 180])) > -0.1:
+                    angle = 0
+
+        return (angle, num_el)
+
+    def wide_lim(self, x):
+        """Returns a tuple corresponding to the axis limits (x) stretched by 2% on either side.
+
+        :param x: List containing axis limits e.g. [xmin, xmax]
+        :type x: list[float, float]
+        :returns: Stretched axis limits (x1, x2)
+        :rtype: tuple(float, float)
+        """
+
+        x2 = max(x)
+        x1 = min(x)
+        dx = x2-x1
+        f = 0.02
+
+        return (x1 - f * dx, x2 + f * dx)
+
+def test_1():
+    mesh = Mesh(2, debug=False)
+    mesh.add_node([0, 0])
+    mesh.add_node([0, 10])  # inches
+    mesh.add_node([10, 10])  # inches
+    mesh.add_element([1, 2], "barre", "b", 15, 15)
+    mesh.add_element([2, 3], "barre", "r", 15, 15)
+    mesh.add_element([1, 3], "barre", "r", 15, 15)
+    #mesh.plot_mesh()
+    print(mesh.node_list)
+
+    f = FEM_Model(mesh)
+    f.apply_load([500, -1000, 0], 2)
+    f.apply_load([500, -1000, 0], 3)
+    print("load", f.load)
+    f.get_nodes_loaded()
+
+    f.apply_bc([1, 1, 0], 1)
+    f.apply_bc([1, 1, 1], 3)
+    print(f.lbc)
+    print("BC matrix :", f.get_bc())
+    f.plot_model()
+    f.solver_frame()
+
+def test_2():
+    mesh = Mesh(2, debug=False)
+    mesh.add_node([0, 0])
+    mesh.add_node([10, 0])  # inches
+    mesh.add_node([20, 10])  # inches
+    mesh.add_element([1, 2], "barre", "b", 15, 15)
+    mesh.add_element([2, 3], "barre", "r", 15, 15)
+    # mesh.plot_mesh()
+    print(mesh.node_list)
+
+    f = FEM_Model(mesh)
+    f.apply_load([0, -1000, 0], 2)
+    print("load", f.load)
+    f.get_nodes_loaded()
+
+    f.apply_bc([0, 1, 1], 1)
+    f.apply_bc([1, 1, 0], 3)
+    print(f.lbc)
+    print("BC matrix :", f.get_bc())
+    f.plot_model()
+    f.solver_frame()
+
+def test_3():
+    mesh = Mesh(2, debug=False)
+    mesh.add_node([0, 0])
+    mesh.add_node([0, 10])  # inches
+    mesh.add_node([10, 10])  # inches
+    mesh.add_node([10, 0])  # inches
+    mesh.add_element([1, 2], "barre", "b", 15, 15)
+    mesh.add_element([2, 3], "barre", "r", 15, 15)
+    mesh.add_element([3, 4], "barre", "g", 15, 15)
+    # mesh.plot_mesh()
+    print(mesh.node_list)
+
+    f = FEM_Model(mesh)
+    f.apply_load([0, -1000, 0], 2)
+    print("load", f.load)
+    f.get_nodes_loaded()
+
+    f.apply_bc([1, 1, 1], 1)
+    f.apply_bc([1, 1, 1], 4)
+    print(f.lbc)
+    print("BC matrix :", f.get_bc())
+    f.plot_model()
+    f.solver_frame()
 
 if __name__ == "__main__":
-    test_3d()
+    test_3()
 
 '''
 TODO : 

@@ -79,7 +79,7 @@ def validation_3d():
 
 
 def validation_2d():
-    mesh = Mesh(2, [], [], debug=False)
+    mesh = Mesh(2, debug=False)
     mesh.add_node([0, 0])
     mesh.add_node([0, 10])  # inches
     mesh.add_node([10, 10])  # inches
@@ -109,7 +109,7 @@ def test_2d():
     logger.info(f"===== {MODULE_NAME} {__version__} =====")
 
     # ----- MESHING -----
-    mesh = Mesh(2, [], [], debug=True)
+    mesh = Mesh(2, debug=True)
     p = 6.5
     h = 2.5
     mesh.add_node([0, 0])

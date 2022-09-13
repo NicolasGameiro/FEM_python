@@ -217,6 +217,16 @@ class Mesh:
             if self.debug == True:
                 print(self.element_list)
 
+    def get_geom(self, element):
+        """ Method to get the geometry of an element
+
+        :param element:
+        :return:
+        """
+        (_, index) =  self.check_elem(element)
+        h, b = self.Section[index]
+        return h, b
+
     def node_table(self):
         tab = pt()
         if self.dim == 2:

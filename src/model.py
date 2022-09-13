@@ -18,11 +18,14 @@ Created on Sun May  1 12:41:46 2022
 
 # Model
 import numpy as np
+from numpy import linalg
 import math
 from prettytable import PrettyTable as pt
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Polygon
 from mesh import Mesh
+#from pre.material import Material
+#from pre.section import Section
 
 
 class FEM_Model():
@@ -57,6 +60,7 @@ class FEM_Model():
 
         if node_index > len(self.mesh.node_list):
             print("Error : node specified not in the mesh")
+
         elif (len(node_load) == 3) or (len(node_load) == 6):
             self.load[node_index - 1, :] = node_load
             # print("nodal load applied")
@@ -81,6 +85,12 @@ class FEM_Model():
         return nodes_loaded
 
     def apply_distributed_load(self, q, element):
+        """ Method to apply a distributed load on nodes
+
+        :param q: longitudinal load
+        :param element: element loaded
+        :return:
+        """
         L = self.get_length(element)
         if self.mesh.dim == 2:
             Q = np.array([0,
@@ -160,7 +170,9 @@ class FEM_Model():
         v = np.cross(a, b)
         c = np.dot(a, b)
         s = np.linalg.norm(v)
-        kmat = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+        kmat = np.array([[0, -v[2], v[1]],
+                         [v[2], 0, -v[0]],
+                         [-v[1], v[0], 0]])
         rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
 
         RR[0:3, 0:3] = rotation_matrix
@@ -175,10 +187,19 @@ class FEM_Model():
         return R
 
     def get_2d_element_stiffness_matrix(self, L_e, h, b):
-        S = h * b  # * 1e-4
-        I = b * h ** 3 / 12  # * 1e-8
-        G = 1 #necessite le module de poisson
-        k = 12 * self.E * I / G / S / L_e ** 2 # k = 0 : pas de cisaillement
+        S = h * b * 1e-4 # h, b in centimeters
+        I = b * h ** 3 / 12 * 1e-8  # h, b in centimeters
+
+        self.E = 2.1E11  # Module d'Young (en Pa)
+        h = 0.15  # hauteur (en m)
+        b = 0.15  # base (en m)
+        S = h * b  # Section (en m2)
+        I = b * h ** 3 / 12  # Inertie (en m4)
+
+        nu = 0.3 # Module de poisson
+        G = self.E / 2 / (1 + nu) #necessite le module de poisson
+        k = 0 # 12 * self.E * I / G / S / L_e ** 2 # k = 0 : pas de cisaillement
+
         Ktc = S * self.E / L_e
         Kf1 = 12 * self.E * I / L_e ** 2 / (1 + k)
         Kf2 = 6 * self.E * I / L_e ** 2 / (1 + k)
@@ -202,7 +223,7 @@ class FEM_Model():
         :return: element mass matrix
         """
 
-        A = h * b
+        A = h * b * 1e-4 # h, b in centimeters
         coeff = rho * A * L_e / 420
 
         element_mass_matrix = coeff * np.array([[140, 0, 0, 70, 0, 0],
@@ -236,6 +257,7 @@ class FEM_Model():
         I = self.mesh.Iy
         h = 0.22
         self.sig = np.zeros([len(self.mesh.node_list), 3])
+
         for i in range(len(self.mesh.node_list)):
             # en MPa
             self.sig[i, 0] = self.load[i, 0] / S / 1e6  # traction/compression (en MPa)
@@ -439,7 +461,7 @@ class FEM_Model():
         pass
 
 
-    def assemblage_3D(self):
+    def assemble_3d_stiffness_matrix(self):
         """ Return the global stiffness matrix of the mesh
 
         :return: matrix of size(dll*3*nb_node,dll*3*nb_node)
@@ -475,12 +497,11 @@ class FEM_Model():
         """
         self.bc = np.delete(self.bc, self.lbc, axis=1)
 
-
         if self.mesh.dim == 2:
             K_glob = self.assemble_2d_stiffness_matrix()
 
         elif self.mesh.dim == 3:
-            K_glob = self.assemblage_3D()
+            K_glob = self.assemble_3d_stiffness_matrix()
 
         K_glob_r = self.bc.T @ K_glob @ self.bc
         F = np.vstack(self.load.flatten())
@@ -489,23 +510,74 @@ class FEM_Model():
 
         self.U = self.bc @ U_r
         self.React = K_glob @ self.U - F
-        #self.S = self.stress()
+        self.S = self.stress()
+
+    def get_displacement(self, dir = "X"):
+        """ Method to get the displacement of the structure
+
+        :param dir: direction of the displacement
+        :type dir: str
+        :return: np.array of the displacement
+        """
+        disp_x = self.U[0:-1:3]
+        disp_y = self.U[1:-1:3]
+
+        if dir == "X":
+            disp = disp_x
+        elif dir == "Y":
+            disp = disp_y
+        else :
+            print("unvalide direction")
+
+        return disp
+
+    def get_reaction(self, dir = "X"):
+        """ Method to get the reation forces
+
+        :param dir: coordinate of the reaction, default to "X"
+        :type dir: str
+        :return: Reaction
+        """
+
+        reaction_x = self.React[0:-1:3]
+        reaction_y = self.React[1:-1:3]
+        reaction_z = self.React[2:-1:3]
+
+        if dir == "X":
+            reaction = reaction_x
+        elif dir == "Y":
+            reaction = reaction_y
+        elif dir == "Z":
+            reaction = reaction_z
+
+        return reaction
 
     def get_local_U(self, element):
-        """Retourne le vecteur deplacement dans le repère local à partir du vecteur dans le repère global"""
+        """Retourne le vecteur deplacement dans le repère local à partir du vecteur dans le repère global
+
+        """
 
         i, j = element[0] - 1, element[1] - 1
+
         if self.mesh.dim == 2:
             c, s = self.get_angle(element)
             rot = self.get_2d_rotation_matrix(c, s)
             global_X = np.concatenate((self.U[i * 3:i * 3 + 3], self.U[j * 3:j * 3 + 3]), axis=None)
+
         elif self.mesh.dim == 3:
             rot = self.get_3d_rotation_matrix(self.mesh.node_list[j])
             global_X = np.concatenate((self.U[i * 6:i * 6 + 6], self.U[j * 6:j * 6 + 6]), axis=None)
+
         local_X = rot.T @ global_X
+
         return local_X
 
-    def get_internal_force(self):
+    def get_internal_force(self, type = "all"):
+        """ Method to extract internal force
+
+        :param filter: type of internal force to extract
+        :return:
+        """
 
         internal_forces = []
         EL = self.mesh.element_list
@@ -513,7 +585,8 @@ class FEM_Model():
 
         for el in EL:
             L_e = self.get_length(el)
-            int_f = self.get_2d_element_stiffness_matrix(L_e, 1, 1) @ self.get_local_U(el)
+            h, b = self.mesh.get_geom(el)
+            int_f = self.get_2d_element_stiffness_matrix(L_e, h, b) @ self.get_local_U(el)
             internal_forces.append(int_f)
 
         internal_forces = np.array(internal_forces)
@@ -522,6 +595,13 @@ class FEM_Model():
             internal_forces = np.reshape(internal_forces, (NoE * 2, 3))
         else :
             internal_forces = np.reshape(internal_forces, (NoE * 2, 6))
+
+        if type == "axial":
+            internal_forces = internal_forces[:,0]
+        elif type == "shear":
+            internal_forces = internal_forces[:,1]
+        elif type == "bending":
+            internal_forces = internal_forces[:,2]
 
         return internal_forces
 
@@ -606,7 +686,8 @@ class FEM_Model():
     def stress(self):
         EL = self.mesh.element_list
         for elem in EL:
-            self.S = np.append(self.S, self.calcul_stresses(elem), axis=0)
+            self.S = np.append(self.S,
+                               self.calcul_stresses(elem), axis=0)
         return self.S
 
     def get_res(self):
@@ -632,6 +713,18 @@ class FEM_Model():
         self.res['node'] = self.mesh.node_list
         self.res['element'] = self.mesh.element_list
         return self.res
+
+    def modal_analysis(self):
+        K = self.assemble_2d_stiffness_matrix()
+        M = self.assemble_2d_mass_matrix()
+        wn2, phi = linalg.eigh(K, M)
+
+        wn = np.sqrt(wn2)
+        wnHz = wn / (2 * np.pi)
+        print("Natural frequencies (Hz) : \n", wnHz)
+
+        # modal mass
+        Meff = phi.T @ M @ phi
 
     # -----------------
     # display functions
@@ -679,6 +772,37 @@ class FEM_Model():
                              np.format_float_scientific(self.React[i * 6 + 3][0], precision=2, exp_digits=2),
                              np.format_float_scientific(self.React[i * 6 + 4][0], precision=2, exp_digits=2),
                              np.format_float_scientific(self.React[i * 6 + 5][0], precision=2, exp_digits=2)])
+        print(tab)
+
+    def F_table(self, unit = "N"):
+        tab = pt()
+        N = self.get_internal_force(type="axial")
+        V = self.get_internal_force(type="shear")
+        M = self.get_internal_force(type="bending")
+
+        if self.mesh.dim == 2:
+            if unit == "N":
+                tab.field_names = ["Element", "Ni (N)", "Nj (N)", "Vi (N)", "Vj (N)", "Mi (N.m)", "Mj (N.m)"]
+                for i in range(len(self.mesh.element_list)):
+                    tab.add_row([int(i + 1),
+                                 round(N[i * 2    ], 3),
+                                 round(N[i * 2 + 1], 3),
+                                 round(V[i * 2    ], 3),
+                                 round(V[i * 2 + 1], 3),
+                                 round(M[i * 2    ], 3),
+                                 round(M[i * 2 + 1], 3)])
+            elif unit == "kN":
+                tab.field_names = ["Element", "Ni (kN)", "Nj (kN)", "Vi (kN)", "Vj (kN)", "Mi (kN.m)", "Mj (kN.m)"]
+                for i in range(len(self.mesh.element_list)):
+                    tab.add_row([int(i + 1),
+                                 round(N[i * 2    ] / 1e3, 3),
+                                 round(N[i * 2 + 1] / 1e3, 3),
+                                 round(V[i * 2    ] / 1e3, 3),
+                                 round(V[i * 2 + 1] / 1e3, 3),
+                                 round(M[i * 2    ] / 1e3, 3),
+                                 round(M[i * 2 + 1] / 1e3, 3)])
+        else:
+            print("--- TBW ---")
         print(tab)
 
     def S_table(self):
@@ -1010,8 +1134,115 @@ class FEM_Model():
         if hinge:
             ax.plot(x, y, 'ko', markerfacecolor='w', linewidth=1, markersize=4)
 
-    def plot_force(self, ax):
+    def plot_force(self, ax, type = "axial" ):
         pass
+
+    def plot_diagram(self, scale = 1):
+        fig, axs = plt.subplots(3)
+
+        NL = self.mesh.node_list
+        EL = self.mesh.element_list - np.ones((len(self.mesh.element_list), 2), dtype=int)
+        FL = self.get_internal_force()
+        disp = self.U
+
+        ne = len(EL)
+
+        ### Displacement diagram
+        # underformed mesh
+        for i in range(ne):
+            xi, xj = NL[EL[i, 0], 0], NL[EL[i, 1], 0]
+            yi, yj = NL[EL[i, 0], 1], NL[EL[i, 1], 1]
+            axs[0].plot([xi, xj], [yi, yj], 'k', linestyle='--', linewidth=1)
+            axs[1].plot([xi, xj], [yi, yj], 'k', linestyle='--', linewidth=1)
+            axs[2].plot([xi, xj], [yi, yj], 'k', linestyle='--', linewidth=1)
+        # deformed mesh
+        for i in range(ne):
+            dxi, dxj = NL[EL[i, 0], 0], NL[EL[i, 1], 0]
+            dyi = NL[EL[i, 0], 1] + disp[i * 3 + 1] * scale
+            dyj = NL[EL[i, 1], 1] + disp[(i + 1) * 3 + 1] * scale
+            axs[0].plot([dxi, dxj], [dyi, dyj], 'r', linewidth=1)
+            axs[0].text(dxi, dyi, str(round(dyi[0] / scale, 4)), rotation=45)
+
+        # Shear force diagram
+        axs[1].invert_yaxis()
+        for i in range(ne):
+            mr_xi, mr_xf = NL[EL[i, 0], 0], NL[EL[i, 1], 0]
+            mr_yi = - FL[2 * i, 1]
+            mr_yf = FL[2 * i + 1, 1]
+            axs[1].plot([mr_xi, mr_xi, mr_xf, mr_xf], [0, mr_yi, mr_yf, 0], 'r', linewidth=2)
+            axs[1].fill([mr_xi, mr_xi, mr_xf, mr_xf], [0, mr_yi, mr_yf, 0], 'c', alpha=0.3)
+            axs[1].text(mr_xi, mr_yi, str(round(mr_yi, 4)), rotation=45)
+
+        # Bending moment diagram
+        for i in range(ne):
+            fr_xi, fr_xf = NL[EL[i, 0], 0], NL[EL[i, 1], 0]
+            fr_yi = FL[i * 2, 2]
+            fr_yf = -FL[2 * i + 1, 2]
+            axs[2].plot([fr_xi, fr_xi, fr_xf, fr_xf], [0, fr_yi, fr_yf, 0], 'r', linewidth=2)
+            axs[2].fill([fr_xi, fr_xi, fr_xf, fr_xf], [0, fr_yi, fr_yf, 0], 'y', alpha=0.3)
+            axs[2].text(fr_xi, fr_yi, str(round(fr_yi, 4)), rotation=45)
+
+        plt.tight_layout()
+        plt.show()
+
+    def plot_axial_force(self, ax):
+
+        # get axial force diagram
+        axial = self.get_internal_force(type="axial")
+
+        # get indices of min and max values of bending moment
+        min_index = np.argmin(axial)
+        max_index = np.argmax(axial)
+
+        # get end node coordinates
+        end1 = node_coords[0, 0:2]
+        end2 = node_coords[1, 0:2]
+
+        # plot shear force diagram
+        for (i, f_axial) in enumerate(axial):
+            i, j = self.element_list[i]
+
+            n1 = self.node_list[i]
+            n2 = self.node_list[j]
+
+            a1 = axial[i]
+            a2 = axial[i + 1]
+
+            # location of node 1 and node 2
+            p1 = n1 + xi * (n2 - n1)
+            p2 = n1 + xis[i + 1] * (n2 - n1)
+
+            # location of the axial force diagram end points
+            L_e = self.get_length(i)
+            v = np.matmul(np.array([[0, -1], [1, 0]]), dx[0:2]) / L_e  # direction vector
+            p3 = p2 + v * scalef * a2
+            p4 = p1 + v * scalef * a1
+
+            # plot shear force line and patch
+            ax.plot([p1[0], p4[0]], [p1[1], p4[1]], linewidth=1, color=(0.7, 0, 0))
+            ax.plot([p3[0], p4[0]], [p3[1], p4[1]], linewidth=1, color=(0.7, 0, 0))
+            ax.plot([p3[0], p2[0]], [p3[1], p2[1]], linewidth=1, color=(0.7, 0, 0))
+            ax.add_patch(Polygon(
+                np.array([p1, p2, p3, p4]), facecolor=(1, 0, 0), linestyle='None', alpha=0.3
+            ))
+
+            # plot end text values of bending moment
+            if i == 0:
+                mid = (p1 + p4) / 2
+                ax.text(mid[0], mid[1], "{:.3e}".format(n1), size=8, verticalalignment='bottom')
+            elif i == len(xis) - 2:
+                mid = (p2 + p3) / 2
+                ax.text(mid[0], mid[1], "{:.3e}".format(n2), size=8, verticalalignment='bottom')
+
+            # plot text value of min bending moment
+            if i == min_index:
+                mid = (p1 + p4) / 2
+                ax.text(mid[0], mid[1], "{:.3e}".format(n1), size=8, verticalalignment='bottom')
+
+            # plot text value of max bending moment
+            if i == max_index:
+                mid = (p1 + p4) / 2
+                ax.text(mid[0], mid[1], "{:.3e}".format(n1), size=8, verticalalignment='bottom')
 
     def plot_reactions(self, ax):
         """Method used to generate a plot of the reaction forces.
@@ -1136,26 +1367,57 @@ def test_1():
     f.solver_frame()
 
 def test_2():
+    # param
+    F = 100
+    L = 9
+    E = 2.1 * 1e11
+    h, b = 0.15, 0.15
+    I = b * h ** 3 / 12
+
     mesh = Mesh(2, debug=False)
-    mesh.add_node([0, 0])
-    mesh.add_node([10, 0])  # inches
-    mesh.add_node([20, 10])  # inches
-    mesh.add_element([1, 2], "barre", "b", 15, 15)
-    mesh.add_element([2, 3], "barre", "r", 15, 15)
+    n = 10
+    for i in range(n):
+        mesh.add_node([i, 0]) # 1
+    for i in range(n-1) :
+        mesh.add_element([i + 1, i + 2], "barre", "b", 15, 15)
     # mesh.plot_mesh()
     print(mesh.node_list)
 
     f = FEM_Model(mesh)
-    f.apply_load([0, -1000, 0], 2)
+    f.apply_load([0, -F, 0], n)
+    #f.apply_load([0, 500, 0], int(n/2))
     print("load", f.load)
     f.get_nodes_loaded()
 
-    f.apply_bc([0, 1, 1], 1)
-    f.apply_bc([1, 1, 0], 3)
+    f.apply_bc([1, 1, 1], 1)
     print(f.lbc)
     print("BC matrix :", f.get_bc())
-    f.plot_model()
+    # f.plot_model()
     f.solver_frame()
+    f.U_table()
+    axial = f.get_internal_force(type="axial")
+    shear = f.get_internal_force(type="shear")
+    bend = f.get_internal_force(type="bending")
+    intf = f.get_internal_force()
+    print("axial : \n", axial)
+    print("shear : \n", shear)
+    print("bending : \n", bend)
+    print("internal forces : \n", intf)
+
+    f.plot_diagram()
+
+    disp_x = f.get_displacement()
+    disp_y = f.get_displacement(dir = "Y")
+    print(disp_y)
+
+    print("theorical results :")
+    print("Umax = ", F * L ** 3 / (3 * E * I) * 1e3, "mm")
+    print("Mmax =", F * L, "N.m")
+    print("numerical results :")
+    print("Umax = ", round(np.abs(disp_x).max() * 1e3 ,1), "mm")
+    print("Nmax =", round(np.abs(axial).max() / 1e3 ,2), "kN")
+    print("Vmax =", round(np.abs(shear).max() / 1e3 ,2) , "kN")
+    print("Mmax =", round(np.abs(bend).max() / 1e3,2)  , "kN.m")
 
 def test_3():
     mesh = Mesh(2, debug=False)
@@ -1181,11 +1443,71 @@ def test_3():
     #f.plot_model()
     f.solver_frame()
     f.U_table()
+    axial = f.get_internal_force(type = "axial")
+    shear = f.get_internal_force(type = "shear")
+    bend = f.get_internal_force(type = "bending")
     intf = f.get_internal_force()
-    print(intf)
+    print("axial : \n", axial)
+    print("shear : \n", shear)
+    print("bending : \n", bend)
+    print("internal forces : \n", intf)
+
+def test_4():
+    # param
+    F = 100 * 1e3 # F = 100 kN
+
+    mesh = Mesh(2, debug=False)
+
+    mesh.add_node([0, 0])  # 1
+    mesh.add_node([2, 0])  # 2
+    mesh.add_node([1, 2])  # 3
+
+    mesh.add_element([1, 2], "barre", "b", 15, 15) # 1
+    mesh.add_element([2, 3], "barre", "b", 15, 15) # 2
+    mesh.add_element([3, 1], "barre", "b", 15, 15) # 3
+
+    # mesh.plot_mesh()
+    print(mesh.node_list)
+
+    f = FEM_Model(mesh)
+    f.apply_load([F, 0, 0], 3)
+
+    f.apply_bc([1, 1, 1], 1)
+    f.apply_bc([1, 1, 0], 2)
+
+    print("BC matrix :", f.get_bc())
+    #f.plot_model()
+    f.solver_frame()
+
+    axial = f.get_internal_force(type="axial")
+    shear = f.get_internal_force(type="shear")
+    bend = f.get_internal_force(type="bending")
+    intf = f.get_internal_force()
+    print("axial : \n", axial)
+    print("shear : \n", shear)
+    print("bending : \n", bend)
+
+    #f.plot_diagram()
+
+    f.F_table(unit = "kN")
+
+    disp_x = f.get_displacement()
+    disp_y = f.get_displacement(dir = "Y")
+
+    print("theorical results :")
+    print("Umax = ", "mm")
+    print("Mmax =", "N.m")
+    print("numerical results :")
+    print("Umax = ", round(np.abs(disp_x).max() * 1e3 ,1), "mm")
+    print("Nmax =", round(np.abs(axial).max() / 1e3 ,2), "kN")
+    print("Vmax =", round(np.abs(shear).max() / 1e3 ,2) , "kN")
+    print("Mmax =", round(np.abs(bend).max() / 1e3,2)  , "kN.m")
+
+    print(f.get_reaction(dir = "Z"))
+
 
 if __name__ == "__main__":
-    test_3()
+    test_4()
 
 '''
 TODO : 

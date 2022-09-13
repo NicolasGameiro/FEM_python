@@ -44,8 +44,9 @@ def validation_cas1(nb_elem = 2) :
     erreur = [abs(d(X[i]) - Uy[i][0]) for i in range(len(X))]
     err_max = max(erreur)
     print('f_max (analytique) = ', np.format_float_scientific(max(abs(w)), precision = 2, exp_digits=2))
-    print('f_max (FEM) = ', np.format_float_scientific(max(Uy, key=abs), precision = 2, exp_digits=2))
+    print('f_max (FEM) = ', np.format_float_scientific(max(Uy, key=abs), precision=2, exp_digits=2))
     print("erreur max :", err_max)
+
     ### Contrainte 
     S = f.stress()
     sf = S[1]

@@ -38,15 +38,17 @@ class FEM_Model():
             self.bc = np.eye(len(self.mesh.node_list) * 3)
             self.U = np.zeros(len(self.mesh.node_list) * 3)
             self.React = np.zeros(len(self.mesh.node_list) * 3)
-            self.S = np.empty((0, 5))
+            self.stress = np.empty((0, 5))
         elif self.mesh.dim == 3:
             self.load = np.zeros([len(self.mesh.node_list), 6])
             self.bc = np.eye(len(self.mesh.node_list) * 6)
             self.U = np.zeros(len(self.mesh.node_list) * 6)
             self.React = np.zeros(len(self.mesh.node_list) * 6)
-            self.S = np.empty((0 , 7))
+            self.stress = np.empty((0 , 7))
         self.dist_load = np.array([[1, 2, 0]])
         self.lbc = []
+
+    # ----- Common Functions -----
 
     def apply_load(self, node_load, node_index):
         """ Method to apply a load at a specified node
@@ -140,179 +142,6 @@ class FEM_Model():
         else:
             print("Error : uncorrect bc format")
 
-    def get_2d_rotation_matrix(self, c, s):
-        """ Calculate the rotation matrix in 2D
-
-        :param c: cosinus
-        :type c: float
-        :param s: sinus
-        :type s: float
-        :return: the rotation matrix
-        """
-        Rotation_matrix = np.array([[c, -s, 0, 0, 0, 0],
-                                    [s, c, 0, 0, 0, 0],
-                                    [0, 0, 1, 0, 0, 0],
-                                    [0, 0, 0, c, -s, 0],
-                                    [0, 0, 0, s, c, 0],
-                                    [0, 0, 0, 0, 0, 1]])
-        return Rotation_matrix
-
-    def get_3d_rotation_matrix(self, vec2):
-        """ Find the rotation matrix that aligns vec1 to vec2
-
-        :param vec1: A 3d "source" vector
-        :param vec2: A 3d "destination" vector
-        :return mat: A transform matrix (3x3) which when applied to vec1, aligns it with vec2.
-        """
-        RR = np.identity(12)
-        vec1 = [1, 0, 0]
-        a, b = (vec1 / np.linalg.norm(vec1)).reshape(3), (vec2 / np.linalg.norm(vec2)).reshape(3)
-        v = np.cross(a, b)
-        c = np.dot(a, b)
-        s = np.linalg.norm(v)
-        kmat = np.array([[0, -v[2], v[1]],
-                         [v[2], 0, -v[0]],
-                         [-v[1], v[0], 0]])
-        rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
-
-        RR[0:3, 0:3] = rotation_matrix
-        RR[3:6, 3:6] = rotation_matrix
-        RR[6:9, 6:9] = rotation_matrix
-        RR[9:12, 9:12] = rotation_matrix
-        return RR
-
-    def mini_rot(self, c, s):
-        R = np.array([[c, s],
-                      [-s, c]])
-        return R
-
-    def get_2d_element_stiffness_matrix(self, L_e, h, b):
-        S = h * b * 1e-4 # h, b in centimeters
-        I = b * h ** 3 / 12 * 1e-8  # h, b in centimeters
-
-        self.E = 2.1E11  # Module d'Young (en Pa)
-        h = 0.15  # hauteur (en m)
-        b = 0.15  # base (en m)
-        S = h * b  # Section (en m2)
-        I = b * h ** 3 / 12  # Inertie (en m4)
-
-        nu = 0.3 # Module de poisson
-        G = self.E / 2 / (1 + nu) #necessite le module de poisson
-        k = 0 # 12 * self.E * I / G / S / L_e ** 2 # k = 0 : pas de cisaillement
-
-        Ktc = S * self.E / L_e
-        Kf1 = 12 * self.E * I / L_e ** 2 / (1 + k)
-        Kf2 = 6 * self.E * I / L_e ** 2 / (1 + k)
-        Kf3 = self.E * I * (2 - k) / L_e / (1 + k)
-        Kf4 = self.E * I * (4 + k) / L_e / (1 + k)
-        K_elem = np.array([[ Ktc,    0,    0, -Ktc,    0,    0],
-                           [   0,  Kf1,  Kf2,    0, -Kf1,  Kf2],
-                           [   0,  Kf2,  Kf4,    0, -Kf2,  Kf3],
-                           [-Ktc,    0,    0,  Ktc,    0,    0],
-                           [   0, -Kf1, -Kf2,    0,  Kf1, -Kf2],
-                           [   0,  Kf2,  Kf3,    0, -Kf2,  Kf4]])
-        return K_elem
-
-    def get_2d_element_mass_matrix(self, L_e, rho, h, b):
-        """ Method to get the mass matrix of an element in 2d
-
-        :param L_e: length of the element
-        :param rho: volumic mass of the element
-        :param h: height of the element
-        :param b: width of the element
-        :return: element mass matrix
-        """
-
-        A = h * b * 1e-4 # h, b in centimeters
-        coeff = rho * A * L_e / 420
-
-        element_mass_matrix = coeff * np.array([[140, 0, 0, 70, 0, 0],
-                                                [0, 156, 22 * L_e, 0, 54, -13 * L_e],
-                                                [0, 22 * L_e, 4 * L_e ** 2, 0, 13 * L_e, -3 * L_e ** 2],
-                                                [70, 0, 0, 140, 0, 0],
-                                                [0, 54, 13 * L_e, 0, 156, -22 * L_e],
-                                                [0, -13 * L_e, -3 * L_e ** 2, 0, -22 * L_e, 4 * L_e ** 2]])
-
-        return element_mass_matrix
-
-    def get_2d_element_mass_matrix(self, type=0):
-        """
-
-        :param type: str
-        :return:
-        """
-
-        # get consistent mass matrix
-        if type == 0:
-            pass
-
-        # get lumped mass matrix
-        elif type == 1:
-            pass
-
-        return
-
-    def stress_2(self):
-        S = self.mesh.S
-        I = self.mesh.Iy
-        h = 0.22
-        self.sig = np.zeros([len(self.mesh.node_list), 3])
-
-        for i in range(len(self.mesh.node_list)):
-            # en MPa
-            self.sig[i, 0] = self.load[i, 0] / S / 1e6  # traction/compression (en MPa)
-            self.sig[i, 1] = self.load[i, 1] / S / 1e6  # cisaillement (en MPa)
-            self.sig[i, 2] = self.load[i, 2] / I * (h / 2) / 1e6  # flexion (en MPa)
-        print(self.sig)
-
-    def get_3d_element_stiffness_matrix(self, L: float, h: float, b: float, E: float = 1, nu: float = 0.3, ay: float = 0,
-                                        az: float = 0) -> np.array:
-        """ Calcul de la matrice de raideur avec prise en compte de l'énergie cisaillement avec les termes ay et az.
-
-        :param L: longueur de l'element
-        :type L: float
-        :param E: Module d'Young
-        :type E: float
-        :param G: Module de coulomb
-        :type G: float
-        :param J: Module de torsion
-        :type J: float
-        :param ay:
-        :type ay:
-        :param az:
-        :type az:
-        :return: matrice de raideur en 3D
-        :rtype: np.array
-        """
-        G = 1  # E/2/(1+nu)
-        S = 1  # h * b
-        Iy = 1  # b * h ** 3 / 12
-        Iz = 1  # h * b ** 3 / 12
-        J = 1  # Iy + Iz
-        Ktc = E * S / L
-        KT = G * J / L
-        Kf1 = 12 * E * Iz / (L ** 3 * (1 + az))
-        Kf2 = 12 * E * Iy / (L ** 3 * (1 + ay))
-        Kf3 = -6 * E * Iy / (L ** 2 * (1 + ay))
-        Kf4 = 6 * E * Iz / (L ** 2 * (1 + az))
-        Kf5 = (4 + ay) * E * Iy / (L * (1 + ay))
-        Kf6 = (4 + az) * E * Iz / (L * (1 + az))
-        Kf7 = (2 - ay) * E * Iy / (L * (1 + ay))
-        Kf8 = (2 - az) * E * Iz / (L * (1 + az))
-        K_elem = np.array([[Ktc, 0, 0, 0, 0, 0, -Ktc, 0, 0, 0, 0, 0],  # 1
-                           [0, Kf1, 0, 0, 0, Kf4, 0, -Kf1, 0, 0, 0, Kf4],
-                           [0, 0, Kf2, 0, Kf3, 0, 0, 0, -Kf2, 0, Kf3, 0],
-                           [0, 0, 0, KT, 0, 0, 0, 0, 0, -KT, 0, 0],
-                           [0, 0, Kf3, 0, Kf5, 0, 0, 0, -Kf3, 0, Kf7, 0],
-                           [0, Kf4, 0, 0, 0, Kf6, 0, -Kf4, 0, 0, 0, Kf8],
-                           [-Ktc, 0, 0, 0, 0, 0, Ktc, 0, 0, 0, 0, 0],  # 7
-                           [0, -Kf1, 0, 0, 0, -Kf4, 0, Kf1, 0, 0, 0, -Kf4],
-                           [0, 0, -Kf2, 0, -Kf3, 0, 0, 0, Kf2, 0, -Kf3, 0],
-                           [0, 0, 0, -KT, 0, 0, 0, 0, 0, KT, 0, 0],
-                           [0, 0, Kf3, 0, Kf7, 0, 0, 0, -Kf3, 0, Kf5, 0],
-                           [0, Kf4, 0, 0, 0, Kf8, 0, -Kf4, 0, 0, 0, Kf6]], dtype='float')
-        return K_elem
-
     def base_change(self, P, M):
         """ method to perform base change from M matrix
 
@@ -321,45 +150,6 @@ class FEM_Model():
         :return:
         """
         return P @ M @ P.T
-
-    def changement_coord(self):
-        BB = []
-        for i in range(len(self.mesh.element_list)):  # Une matrice de changement de coord par element
-            # print("generation de la matrice de passage de l'element ", i + 1, ":")
-            B = np.zeros([len(self.mesh.node_list) * 3, 6])
-            noeud1 = self.mesh.element_list[i, 0]
-            noeud2 = self.mesh.element_list[i, 1]
-            B[(noeud1 - 1) * 3, 0] = 1
-            B[(noeud1 - 1) * 3 + 1, 1] = 1
-            B[(noeud1 - 1) * 3 + 2, 2] = 1
-            B[(noeud2 - 1) * 3, 3] = 1
-            B[(noeud2 - 1) * 3 + 1, 4] = 1
-            B[(noeud2 - 1) * 3 + 2, 5] = 1
-            BB.append(B)
-        return BB
-
-    def changement_coord_3D(self):
-        BB = []
-        for i in range(len(self.mesh.element_list)):  # Une matrice de changement de coord par element
-            # print("generation de la matrice de passage de l'element ", i + 1, ":")
-            B = np.zeros([len(self.mesh.node_list) * 6, 12])
-            noeud1 = self.mesh.element_list[i, 0]
-            noeud2 = self.mesh.element_list[i, 1]
-            B[(noeud1 - 1) * 6, 0] = 1
-            B[(noeud1 - 1) * 6 + 1, 1] = 1
-            B[(noeud1 - 1) * 6 + 2, 2] = 1
-            B[(noeud1 - 1) * 6 + 3, 3] = 1
-            B[(noeud1 - 1) * 6 + 4, 4] = 1
-            B[(noeud1 - 1) * 6 + 5, 5] = 1
-            ###
-            B[(noeud2 - 1) * 6, 0] = 1
-            B[(noeud2 - 1) * 6 + 1, 1] = 1
-            B[(noeud2 - 1) * 6 + 2, 2] = 1
-            B[(noeud2 - 1) * 6 + 3, 3] = 1
-            B[(noeud2 - 1) * 6 + 4, 4] = 1
-            B[(noeud2 - 1) * 6 + 5, 5] = 1
-            BB.append(B)
-        return BB
 
     def get_length(self, element):
         noeud1 = element[0]
@@ -421,6 +211,107 @@ class FEM_Model():
         BC = BC.reshape((len(self.mesh.node_list), 3))
         return BC
 
+    # ----- 2D Functions -----
+
+    def changement_coord(self):
+        BB = []
+        for i in range(len(self.mesh.element_list)):  # Une matrice de changement de coord par element
+            # print("generation de la matrice de passage de l'element ", i + 1, ":")
+            B = np.zeros([len(self.mesh.node_list) * 3, 6])
+            noeud1 = self.mesh.element_list[i, 0]
+            noeud2 = self.mesh.element_list[i, 1]
+            B[(noeud1 - 1) * 3, 0] = 1
+            B[(noeud1 - 1) * 3 + 1, 1] = 1
+            B[(noeud1 - 1) * 3 + 2, 2] = 1
+            B[(noeud2 - 1) * 3, 3] = 1
+            B[(noeud2 - 1) * 3 + 1, 4] = 1
+            B[(noeud2 - 1) * 3 + 2, 5] = 1
+            BB.append(B)
+        return BB
+
+    def get_2d_rotation_matrix(self, c, s):
+        """ Calculate the rotation matrix in 2D
+
+        :param c: cosinus
+        :type c: float
+        :param s: sinus
+        :type s: float
+        :return: the rotation matrix
+        """
+        Rotation_matrix = np.array([[c, -s, 0, 0, 0, 0],
+                                    [s, c, 0, 0, 0, 0],
+                                    [0, 0, 1, 0, 0, 0],
+                                    [0, 0, 0, c, -s, 0],
+                                    [0, 0, 0, s, c, 0],
+                                    [0, 0, 0, 0, 0, 1]])
+        return Rotation_matrix
+
+    def get_2d_element_stiffness_matrix(self, L_e, h, b):
+        S = h * b * 1e-4 # h, b in centimeters
+        I = b * h ** 3 / 12 * 1e-8  # h, b in centimeters
+
+        self.E = 2.1E11  # Module d'Young (en Pa)
+        h = 0.15  # hauteur (en m)
+        b = 0.15  # base (en m)
+        S = h * b  # Section (en m2)
+        I = b * h ** 3 / 12  # Inertie (en m4)
+
+        nu = 0.3 # Module de poisson
+        G = self.E / 2 / (1 + nu) #necessite le module de poisson
+        k = 0 # 12 * self.E * I / G / S / L_e ** 2 # k = 0 : pas de cisaillement
+
+        Ktc = S * self.E / L_e
+        Kf1 = 12 * self.E * I / L_e ** 2 / (1 + k)
+        Kf2 = 6 * self.E * I / L_e ** 2 / (1 + k)
+        Kf3 = self.E * I * (2 - k) / L_e / (1 + k)
+        Kf4 = self.E * I * (4 + k) / L_e / (1 + k)
+        K_elem = np.array([[ Ktc,    0,    0, -Ktc,    0,    0],
+                           [   0,  Kf1,  Kf2,    0, -Kf1,  Kf2],
+                           [   0,  Kf2,  Kf4,    0, -Kf2,  Kf3],
+                           [-Ktc,    0,    0,  Ktc,    0,    0],
+                           [   0, -Kf1, -Kf2,    0,  Kf1, -Kf2],
+                           [   0,  Kf2,  Kf3,    0, -Kf2,  Kf4]])
+        return K_elem
+
+    def get_2d_element_mass_matrix_consistent(self, L_e, rho, h, b):
+        """ Method to get the mass matrix of an element in 2d
+
+        :param L_e: length of the element
+        :param rho: volumic mass of the element
+        :param h: height of the element
+        :param b: width of the element
+        :return: element mass matrix
+        """
+
+        A = h * b * 1e-4 # h, b in centimeters
+        coeff = rho * A * L_e / 420
+
+        element_mass_matrix = coeff * np.array([[140, 0, 0, 70, 0, 0],
+                                                [0, 156, 22 * L_e, 0, 54, -13 * L_e],
+                                                [0, 22 * L_e, 4 * L_e ** 2, 0, 13 * L_e, -3 * L_e ** 2],
+                                                [70, 0, 0, 140, 0, 0],
+                                                [0, 54, 13 * L_e, 0, 156, -22 * L_e],
+                                                [0, -13 * L_e, -3 * L_e ** 2, 0, -22 * L_e, 4 * L_e ** 2]])
+
+        return element_mass_matrix
+
+    def get_2d_element_mass_matrix(self, L_e, rho, h, b, type=0):
+        """
+
+        :param type: str
+        :return:
+        """
+
+        # get consistent mass matrix
+        if type == 0:
+            element_mass_matrix = self.get_2d_element_mass_matrix_consistent(L_e, rho, h, b)
+
+        # get lumped mass matrix
+        elif type == 1:
+            pass
+
+        return element_mass_matrix
+
     def assemble_2d_stiffness_matrix(self):
         """ Return the global stiffness matrix of the mesh
 
@@ -460,6 +351,101 @@ class FEM_Model():
 
         pass
 
+    # ----- 3D Functions -----
+
+    def get_3d_rotation_matrix(self, vec2):
+        """ Find the rotation matrix that aligns vec1 to vec2
+
+        :param vec1: A 3d "source" vector
+        :param vec2: A 3d "destination" vector
+        :return mat: A transform matrix (3x3) which when applied to vec1, aligns it with vec2.
+        """
+        RR = np.identity(12)
+        vec1 = [1, 0, 0]
+        a, b = (vec1 / np.linalg.norm(vec1)).reshape(3), (vec2 / np.linalg.norm(vec2)).reshape(3)
+        v = np.cross(a, b)
+        c = np.dot(a, b)
+        s = np.linalg.norm(v)
+        kmat = np.array([[0, -v[2], v[1]],
+                         [v[2], 0, -v[0]],
+                         [-v[1], v[0], 0]])
+        rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
+
+        RR[0:3, 0:3] = rotation_matrix
+        RR[3:6, 3:6] = rotation_matrix
+        RR[6:9, 6:9] = rotation_matrix
+        RR[9:12, 9:12] = rotation_matrix
+        return RR
+
+    def get_3d_element_stiffness_matrix(self, L: float, h: float, b: float, E: float = 1, nu: float = 0.3, ay: float = 0,
+                                        az: float = 0) -> np.array:
+        """ Calcul de la matrice de raideur avec prise en compte de l'énergie cisaillement avec les termes ay et az.
+
+        :param L: longueur de l'element
+        :type L: float
+        :param E: Module d'Young
+        :type E: float
+        :param G: Module de coulomb
+        :type G: float
+        :param J: Module de torsion
+        :type J: float
+        :param ay:
+        :type ay:
+        :param az:
+        :type az:
+        :return: matrice de raideur en 3D
+        :rtype: np.array
+        """
+        G = 1  # E/2/(1+nu)
+        S = 1  # h * b
+        Iy = 1  # b * h ** 3 / 12
+        Iz = 1  # h * b ** 3 / 12
+        J = 1  # Iy + Iz
+        Ktc = E * S / L
+        KT = G * J / L
+        Kf1 = 12 * E * Iz / (L ** 3 * (1 + az))
+        Kf2 = 12 * E * Iy / (L ** 3 * (1 + ay))
+        Kf3 = -6 * E * Iy / (L ** 2 * (1 + ay))
+        Kf4 = 6 * E * Iz / (L ** 2 * (1 + az))
+        Kf5 = (4 + ay) * E * Iy / (L * (1 + ay))
+        Kf6 = (4 + az) * E * Iz / (L * (1 + az))
+        Kf7 = (2 - ay) * E * Iy / (L * (1 + ay))
+        Kf8 = (2 - az) * E * Iz / (L * (1 + az))
+        K_elem = np.array([[Ktc, 0, 0, 0, 0, 0, -Ktc, 0, 0, 0, 0, 0],  # 1
+                           [0, Kf1, 0, 0, 0, Kf4, 0, -Kf1, 0, 0, 0, Kf4],
+                           [0, 0, Kf2, 0, Kf3, 0, 0, 0, -Kf2, 0, Kf3, 0],
+                           [0, 0, 0, KT, 0, 0, 0, 0, 0, -KT, 0, 0],
+                           [0, 0, Kf3, 0, Kf5, 0, 0, 0, -Kf3, 0, Kf7, 0],
+                           [0, Kf4, 0, 0, 0, Kf6, 0, -Kf4, 0, 0, 0, Kf8],
+                           [-Ktc, 0, 0, 0, 0, 0, Ktc, 0, 0, 0, 0, 0],  # 7
+                           [0, -Kf1, 0, 0, 0, -Kf4, 0, Kf1, 0, 0, 0, -Kf4],
+                           [0, 0, -Kf2, 0, -Kf3, 0, 0, 0, Kf2, 0, -Kf3, 0],
+                           [0, 0, 0, -KT, 0, 0, 0, 0, 0, KT, 0, 0],
+                           [0, 0, Kf3, 0, Kf7, 0, 0, 0, -Kf3, 0, Kf5, 0],
+                           [0, Kf4, 0, 0, 0, Kf8, 0, -Kf4, 0, 0, 0, Kf6]], dtype='float')
+        return K_elem
+    def changement_coord_3D(self):
+        BB = []
+        for i in range(len(self.mesh.element_list)):  # Une matrice de changement de coord par element
+            # print("generation de la matrice de passage de l'element ", i + 1, ":")
+            B = np.zeros([len(self.mesh.node_list) * 6, 12])
+            noeud1 = self.mesh.element_list[i, 0]
+            noeud2 = self.mesh.element_list[i, 1]
+            B[(noeud1 - 1) * 6, 0] = 1
+            B[(noeud1 - 1) * 6 + 1, 1] = 1
+            B[(noeud1 - 1) * 6 + 2, 2] = 1
+            B[(noeud1 - 1) * 6 + 3, 3] = 1
+            B[(noeud1 - 1) * 6 + 4, 4] = 1
+            B[(noeud1 - 1) * 6 + 5, 5] = 1
+            ###
+            B[(noeud2 - 1) * 6, 0] = 1
+            B[(noeud2 - 1) * 6 + 1, 1] = 1
+            B[(noeud2 - 1) * 6 + 2, 2] = 1
+            B[(noeud2 - 1) * 6 + 3, 3] = 1
+            B[(noeud2 - 1) * 6 + 4, 4] = 1
+            B[(noeud2 - 1) * 6 + 5, 5] = 1
+            BB.append(B)
+        return BB
 
     def assemble_3d_stiffness_matrix(self):
         """ Return the global stiffness matrix of the mesh
@@ -510,7 +496,7 @@ class FEM_Model():
 
         self.U = self.bc @ U_r
         self.React = K_glob @ self.U - F
-        self.S = self.stress()
+        self.stress = self.get_stress()
 
     def get_displacement(self, dir = "X"):
         """ Method to get the displacement of the structure
@@ -605,7 +591,6 @@ class FEM_Model():
 
         return internal_forces
 
-
     def get_local_F(self, element):
         """Retourne le vecteur force dans le repère local à partir du vecteur dans le repère global"""
 
@@ -625,28 +610,29 @@ class FEM_Model():
             print(local_f)
         return local_f
 
-    def calcul_stresses(self, elem):
+    def get_element_stress(self, elem, unit="MPa"):
         # TODO : bien prendre les valeurs dans le repère local de l'element
-        # TODO : récupérer les dimensions de l'element
         """calcul les différentes contraintes sur un elmeent donné"""
         NL = self.mesh.node_list
         node_i, node_j = elem[0] - 1, elem[1] - 1
         L = self.get_length(elem)
-        U = self.U
         U = self.get_local_U(elem)
         G = self.E / 2 / (1 + 0.3)
-        h, b = 4, 2  # self.mesh.Section[i,0], self.mesh.Section[i,1]
+        h, b = self.mesh.Section[i,0], self.mesh.Section[i,1]
         Iy = b * h ** 3 / 12
         Iz = h * b ** 3 / 12
         k = 5 / 6
 
         if self.mesh.dim == 2:
             epsilon_x = (U[3] - U[0]) / L
-            sigma_x = self.E * epsilon_x  # / 1E6
-            sigma_fy = self.E * h * (U[5] - U[2]) / L  # / 1E6
-            tau_y = 0 / 1E6
+            sigma_x = self.E * epsilon_x
+            sigma_fy = self.E * h * (U[5] - U[2]) / L
+            tau_y = G * (U[4] - U[1]) / L * max(h, b)
             sigma_VM = math.sqrt((sigma_x + sigma_fy) ** 2 + 3 * (tau_y) ** 2)
-            sigma_T = math.sqrt((sigma_x + sigma_fy) ** 2 + 4 * (tau_y) ** 2) / 1E6
+            sigma_T = math.sqrt((sigma_x + sigma_fy) ** 2 + 4 * (tau_y) ** 2)
+
+            stress_vector = np.array([[sigma_x, sigma_fy, tau_y, sigma_VM, sigma_T]])
+
             if self.mesh.debug == True:
                 print("déformation (en mm) =", epsilon_x * 1E3)
                 print("contrainte normale (en MPa) =", sigma_x)
@@ -654,7 +640,11 @@ class FEM_Model():
                 print("contrainte cisaillement de flexion (en MPa) =", tau_y)
                 print("contrainte Von Mises (en MPa) =", sigma_VM)
                 print("contrainte Tresca (en MPa) =", sigma_T)
-            return np.array([[sigma_x, sigma_fy, tau_y, sigma_VM, sigma_T]])
+
+            if unit == "MPa":
+                stress_vector = stress_vector / 1E6
+
+            return stress_vector
 
         elif self.mesh.dim == 3:
             RR = self.get_3d_rotation_matrix(NL[elem[1] - 1])
@@ -662,6 +652,7 @@ class FEM_Model():
             Ui = np.transpose(rot_max).dot(np.array(U[6 * node_i: 6 * node_i + 6]))
             Uj = np.transpose(rot_max).dot(np.array(U[6 * node_j: 6 * node_j + 6]))
             epsilon_x = (Uj[0] - Ui[0]) / L
+
             sigma_x = self.E * epsilon_x
             tau_x = G * (Uj[1] - Ui[1]) / L * max(h, b)
             sigma_fy = self.E * h * (U[6 * node_j + 5] - U[6 * node_i + 5]) / L
@@ -683,12 +674,12 @@ class FEM_Model():
                 print("contrainte Von Mises (en MPa) =", sigma_VM[0] / 1E6)
             return np.array([[sigma_x, sigma_fy, sigma_fz, tau_x, tau_y, tau_z, sigma_VM]])
 
-    def stress(self):
+    def get_stress(self):
         EL = self.mesh.element_list
         for elem in EL:
-            self.S = np.append(self.S,
-                               self.calcul_stresses(elem), axis=0)
-        return self.S
+            self.stress = np.append(self.stress,
+                                    self.get_element_stress(elem), axis=0)
+        return self.stress
 
     def get_res(self):
         # local vector
@@ -726,11 +717,7 @@ class FEM_Model():
         # modal mass
         Meff = phi.T @ M @ phi
 
-    # -----------------
-    # display functions
-    # -----------------
-
-    # TODO: Faire un script dédié pour l'affichage
+    # ----- display functions -----
 
     def U_table(self):
         tab = pt()
@@ -811,11 +798,11 @@ class FEM_Model():
             tab.field_names = ["Elem", "Sx (MPa)", "Sf (MPa)", "Ty (MPa)", "SVM (MPa)", "Tresca (MPa)"]
             for i in range(len(self.mesh.element_list)):
                 tab.add_row([int(i + 1),
-                             np.format_float_scientific(self.S[i, 0], precision=2, exp_digits=2),
-                             np.format_float_scientific(self.S[i, 1], precision=2, exp_digits=2),
-                             np.format_float_scientific(self.S[i, 2], precision=2, exp_digits=2),
-                             np.format_float_scientific(self.S[i, 3], precision=2, exp_digits=2),
-                             np.format_float_scientific(self.S[i, 4], precision=2, exp_digits=2)])
+                             np.format_float_scientific(self.stress[i, 0], precision=2, exp_digits=2),
+                             np.format_float_scientific(self.stress[i, 1], precision=2, exp_digits=2),
+                             np.format_float_scientific(self.stress[i, 2], precision=2, exp_digits=2),
+                             np.format_float_scientific(self.stress[i, 3], precision=2, exp_digits=2),
+                             np.format_float_scientific(self.stress[i, 4], precision=2, exp_digits=2)])
         else:
             tab.field_names = ["Node", "Ux (m)", "Uy (m)", "Uz (m)", "Phix (rad)", "Phiy (rad)", "Phiz (rad)"]
             for i in range(len(self.mesh.node_list)):
@@ -828,9 +815,7 @@ class FEM_Model():
                              np.format_float_scientific(self.U[i * 6 + 5], precision=2, exp_digits=2)])
         print(tab)
 
-    # --------------
-    # plot functions
-    # --------------
+    # ----- plot functions -----
 
     def plot_model(self, ax=None, supports=True, loads=True, deformed=False, def_scale=1):
         """Method used to plot the structural mesh in the undeformed and/or deformed state. If no

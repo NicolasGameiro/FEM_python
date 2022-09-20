@@ -57,6 +57,8 @@ class Mesh:
         else :
             self.figure_axis = ax
 
+    # ----- GESTION DES Nodes -----
+
     def add_node(self, node: list):
         """ Ajout un noeud au maillage
 
@@ -176,7 +178,7 @@ class Mesh:
             print(self.node_list)
         return
 
-    ### GESTION DES ELEMENTS
+    # ----- GESTION DES ELEMENTS -----
 
     def check_elem(self, elem):
         index = -1
@@ -307,9 +309,7 @@ class Mesh:
     - Nombre d'éléments : {len(self.element_list)}
     """
 
-    # --------------
-    # plot functions
-    # --------------
+    # ----- plot functions -----
 
     def plot_mesh(self, ax=None, ex=False, pic=False, path="./"):
         """ Plot the mesh
@@ -485,3 +485,4 @@ if __name__ == "__main__":
     mesh.add_element([2, 3], "barre", "b", 15, 15, 5)
     mesh.add_element([3, 1], "bracon", "r", 10, 10, 4)
     mesh.plot_mesh()
+    plt.show()

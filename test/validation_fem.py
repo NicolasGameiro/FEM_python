@@ -48,7 +48,7 @@ def validation_cas1(nb_elem = 2) :
     print("erreur max :", err_max)
 
     ### Contrainte 
-    S = f.stress()
+    S = f.get_stress()
     sf = S[1]
     M_max = F*L
     sigma_f_a = M_max/I*h/2*1E-2
